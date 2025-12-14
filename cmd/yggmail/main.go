@@ -32,7 +32,7 @@ import (
 	"github.com/neilalexander/yggmail/internal/storage/sqlite3"
 	"github.com/neilalexander/yggmail/internal/transport"
 	"github.com/neilalexander/yggmail/internal/utils"
-	"github.com/neilalexander/yggmail/internal/nice"
+	"github.com/neilalexander/yggmail/internal/welcome"
 
 	"golang.org/x/crypto/bcrypt"
 )
