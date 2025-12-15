@@ -78,12 +78,12 @@ func welcomeMessageFor(yourYggMailAddr string) ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-var welcomeSubject string = "Welcome to YggMail!"
+var welcomeSubject string = "Welcome to Yggmail!"
 var welcomeBody string =
 `
 Hey <b>%s</b>!
 
-We'd like to welcome you to YggMail!
+We'd like to welcome you to Yggmail!
 
 You're about to embark in both a revolution and an
 evolution as you know it. The revolution is that this
@@ -101,7 +101,7 @@ func welcomeTo(yourYggMailAddr string) message.Header {
 	// header would be a nice preview of what to expect
 	// of the message
 	var welcomeHdr = message.Header{}
-	welcomeHdr.Add("From", "YggMail Team")
+	welcomeHdr.Add("From", "Yggmail Team")
 	welcomeHdr.Add("To", yourYggMailAddr+"@yggmail")
 	welcomeHdr.Add("Subject", welcomeSubject)
 	// FIXME: Add content-type entry here
