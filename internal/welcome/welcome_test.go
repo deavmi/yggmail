@@ -1,8 +1,8 @@
 package welcome
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 )
 
 func Test_WelcomeGenerate(t *testing.T) {
