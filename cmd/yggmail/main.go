@@ -103,8 +103,8 @@ func main() {
 		copy(sk, skBytes)
 	}
 	pk := sk.Public().(ed25519.PublicKey)
-	mailAddr_user := hex.EncodeToString(pk)
-	mailAddr := fmt.Sprintf("%s@%s", mailAddr_user, utils.Domain)
+	mailAddrUser := hex.EncodeToString(pk)
+	mailAddr := fmt.Sprintf("%s@%s", mailAddrUser, utils.Domain)
 	log.Printf("Mail address: %s\n", mailAddr)
 
 	for _, name := range []string{"INBOX", "Outbox", "Sent"} {
@@ -113,7 +113,7 @@ func main() {
 		}
 	}
 
-	welcome.Onboard(mailAddr_user, storage, log)
+	welcome.Onboard(mailAddrUser, storage, log)
 
 	switch {
 	case password != nil && *password:
