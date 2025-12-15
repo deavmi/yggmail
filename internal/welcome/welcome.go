@@ -1,18 +1,17 @@
-package welcome;
+package welcome
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/emersion/go-message"
-	"bytes"
 	"github.com/neilalexander/yggmail/internal/storage"
 	"log"
 )
 
 const (
 	WEBSITE_URL = "https://github.com/neilalexander/yggmail"
-	CODE_URL = "https://github.com/neilalexander/yggmail"
-);
-
+	CODE_URL    = "https://github.com/neilalexander/yggmail"
+)
 
 func Onboard(user string, storage storage.Storage, log *log.Logger) {
 	// Fetch onboarding status
@@ -21,13 +20,13 @@ func Onboard(user string, storage storage.Storage, log *log.Logger) {
 		// If we haven't onboarded yet
 		if len(f) == 0 {
 			log.Printf("Performing onboarding...\n")
-		
+
 			// takes in addr and output writer
-			welcomeMsg , e := welcomeMessageFor(user)
+			welcomeMsg, e := welcomeMessageFor(user)
 			if e != nil {
 				log.Println("Failure to generate welcome message")
 			}
-			var welcomeId int;
+			var welcomeId int
 			if id, e := storage.MailCreate("INBOX", welcomeMsg); e != nil {
 				log.Printf("Failed to store welcome message: %v\n", e)
 				panic("See above")
@@ -38,7 +37,7 @@ func Onboard(user string, storage storage.Storage, log *log.Logger) {
 			if storage.MailUpdateFlags("INBOX", welcomeId, false, false, false, false) != nil {
 				panic("Could not set flags on onboarding message")
 			}
-			
+
 			// set flag to never do it again
 			if storage.ConfigSet("onboarding_done", "true") != nil {
 				panic("Error storing onboarding flag")
@@ -79,8 +78,7 @@ func welcomeMessageFor(yourYggMailAddr string) ([]byte, error) {
 }
 
 var welcomeSubject string = "Welcome to Yggmail!"
-var welcomeBody string =
-`
+var welcomeBody string = `
 Hey <b>%s</b>!
 
 We'd like to welcome you to Yggmail!
