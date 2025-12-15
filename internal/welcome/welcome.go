@@ -1,9 +1,7 @@
 package welcome;
 
 import "fmt";
-// import "github.com/emersion/go-message/textproto";
 import "github.com/emersion/go-message";
-import "io";
 import "bytes";
 import "github.com/neilalexander/yggmail/internal/storage";
 import "log";
@@ -14,13 +12,6 @@ const (
 	CODE_URL = "https://github.com/neilalexander/yggmail"
 );
 
-func giveReader() io.Reader {
-	var p_r, p_o = io.Pipe();
-
-	io.WriteString(p_o, welcome_body)
-
-	return p_r;
-}
 
 func Onboard(user string, storage storage.Storage, log *log.Logger) {
 	// Fetch onboarding status
@@ -35,15 +26,15 @@ func Onboard(user string, storage storage.Storage, log *log.Logger) {
 			if e != nil {
 				log.Println("Failure to generate welcome message")
 			}
-			var welcome_id int;
+			var welcomeId int;
 			if id, e := storage.MailCreate("INBOX", welcomeMsg); e != nil {
 				log.Printf("Failed to store welcome message: %v\n", e);
 				panic("See above");
 			} else {
-				welcome_id = id;
+				welcomeId = id;
 			}
 
-			if storage.MailUpdateFlags("INBOX", welcome_id, false, false, false, false) != nil {
+			if storage.MailUpdateFlags("INBOX", welcomeId, false, false, false, false) != nil {
 				panic("Could not set flags on onboarding message");
 			}
 			
@@ -71,14 +62,14 @@ func welcomeMessageFor(yourYggMailAddr string) ([]byte, error) {
 	// but returns a writer just for the body part
 	// (it will encode header to underlying writer
 	// first)
-	msg_wrt, e := message.CreateWriter(buff, hdr);
+	msgWrt, e := message.CreateWriter(buff, hdr);
 	if e != nil {
 		return nil, e
 	}
 
-	var formatted_body string = fmt.Sprintf(welcome_body, yourYggMailAddr, WEBSITE_URL, CODE_URL);
+	var formattedBody string = fmt.Sprintf(welcomeBody, yourYggMailAddr, WEBSITE_URL, CODE_URL);
 
-	if _, e := msg_wrt.Write([]byte(formatted_body)); e != nil {
+	if _, e := msgWrt.Write([]byte(formattedBody)); e != nil {
 		return nil, e
 	}
 	// var ent, e = message.New(hdr, body_rdr)
@@ -86,8 +77,8 @@ func welcomeMessageFor(yourYggMailAddr string) ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-var welcome_subject string = "Welcome to YggMail!";
-var welcome_body string =
+var welcomeSubject string = "Welcome to YggMail!";
+var welcomeBody string =
 `
 Hey <b>%s</b>!
 
@@ -113,11 +104,12 @@ func welcomeTo(yourYggMailAddr string) message.Header {
 
 	// header would be a nice preview of what to expect
 	// of the message
-	var welcome_hdr = message.Header{};
-	welcome_hdr.Add("From", "YggMail Team");
-	welcome_hdr.Add("To", yourYggMailAddr+"@yggmail");
-	welcome_hdr.Add("Subject", welcome_subject);
+	var welcomeHdr = message.Header{};
+	welcomeHdr.Add("From", "YggMail Team");
+	welcomeHdr.Add("To", yourYggMailAddr+"@yggmail");
+	welcomeHdr.Add("Subject", welcomeSubject);
+	// FIXME: Add content-type entry here
 
-	fmt.Printf("Generated welcome mesg '%v'\n", welcome_hdr);
-	return welcome_hdr;
+	fmt.Printf("Generated welcome mesg '%v'\n", welcomeHdr);
+	return welcomeHdr;
 }
