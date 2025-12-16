@@ -202,8 +202,6 @@ func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 			}
 		}
 
-		// TODO: logging
-		fmt.Printf("Listing message '%v'...\n", fetched)
 		ch <- fetched
 	}
 
