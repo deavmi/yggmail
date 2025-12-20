@@ -69,7 +69,7 @@ func (u *User) CreateMailbox(name string) error {
 	u.log.Printf("Creating mailbox '%s'...\n", name)
 	
 	if e := u.backend.Storage.MailboxCreate(name); e != nil {
-		u.log.Printf("Error creating mailbox '%s': %w\n", e);
+		u.log.Printf("Error creating mailbox '%s': %w\n", name, e);
 		return e;
 	}
 	
@@ -83,7 +83,7 @@ func (u *User) DeleteMailbox(name string) error {
 		return errors.New("Cannot delete " + name)
 	default:
 		if e := u.backend.Storage.MailboxDelete(name); e != nil {
-			 u.log.Printf("Error deleting mailbox '%s': %w\n", e)	
+			 u.log.Printf("Error deleting mailbox '%s': %w\n", name, e)	
 			 return e;
 		} else {
 			u.log.Printf("Deleted mailbox '%s'\n", name)
