@@ -54,9 +54,9 @@ func Onboard(user string, storage storage.Storage, log *log.Logger) {
 }
 
 func welcomeMessageFor(yourYggMailAddr string) ([]byte, error) {
-	var hdr message.Header = welcomeTo(yourYggMailAddr)
+	var hdr = welcomeTo(yourYggMailAddr)
 
-	var buff *bytes.Buffer = bytes.NewBuffer([]byte{})
+	var buff = bytes.NewBuffer([]byte{})
 
 	// writer writes to underlying writer (our buffer)
 	// but returns a writer just for the body part
@@ -67,7 +67,7 @@ func welcomeMessageFor(yourYggMailAddr string) ([]byte, error) {
 		return nil, e
 	}
 
-	var formattedBody string = fmt.Sprintf(welcomeBody, yourYggMailAddr, WEBSITE_URL, CODE_URL)
+	var formattedBody = fmt.Sprintf(welcomeBody, yourYggMailAddr, WEBSITE_URL, CODE_URL)
 
 	if _, e := msgWrt.Write([]byte(formattedBody)); e != nil {
 		return nil, e
@@ -77,8 +77,8 @@ func welcomeMessageFor(yourYggMailAddr string) ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-var welcomeSubject string = "Welcome to Yggmail!"
-var welcomeBody string = `
+var welcomeSubject = "Welcome to Yggmail!"
+var welcomeBody = `
 Hey <b>%s</b>!
 
 We'd like to welcome you to Yggmail!
