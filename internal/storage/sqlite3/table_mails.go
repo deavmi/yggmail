@@ -200,7 +200,7 @@ func (t *TableMails) MailSearch(mailbox string) ([]uint32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("t.searchMail.Query: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() // nolint:errcheck
 	for rows.Next() {
 		var id uint32
 		if err := rows.Scan(&id); err != nil {

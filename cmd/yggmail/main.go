@@ -78,7 +78,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer storage.Close()
+	defer storage.Close() // nolint:errcheck
 	log.Printf("Using database file %q\n", *database)
 
 	skStr, err := storage.ConfigGet("private_key")
@@ -150,7 +150,7 @@ func main() {
 		log.Println("Password for IMAP and SMTP has been updated!")
 		os.Exit(0)
 	case passwordhash != nil && *passwordhash != "":
-		var hash string = strings.TrimSpace(*passwordhash)
+		var hash = strings.TrimSpace(*passwordhash)
 		if len(hash) == 0 {
 			log.Println("Password hash cannot be blank")
 			os.Exit(1)

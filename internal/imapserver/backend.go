@@ -31,7 +31,7 @@ func (b *Backend) Login(conn *imap.ConnInfo, username, password string) (backend
 	// If our username is email-like, then take just the localpart
 	if pk, err := utils.ParseAddress(username); err == nil {
 		if !pk.Equal(b.Config.PublicKey) {
-			b.Log.Println("Failed to authenticate IMAP user due to wrong domain", pk, b.Config.PublicKey)
+			b.Log.Println("Failed to authenticate IMAP user due to wrong domain", hex.EncodeToString(pk), hex.EncodeToString(b.Config.PublicKey))
 			return nil, fmt.Errorf("failed to authenticate: wrong domain in username")
 		}
 	}
