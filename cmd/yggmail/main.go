@@ -57,7 +57,7 @@ func main() {
 	smtpaddr := flag.String("smtp", "localhost:1025", "SMTP listen address")
 	imapaddr := flag.String("imap", "localhost:1143", "IMAP listen address")
 	multicast := flag.Bool("multicast", false, "Connect to Yggdrasil peers on your LAN")
-        mcastregexp := flag.String("mcastregexp", ".*", "Regexp for multicast")
+	mcastregexp := flag.String("mcastregexp", ".*", "Regexp for multicast")
 	password := flag.Bool("password", false, "Set a new IMAP/SMTP password")
 	passwordhash := flag.String("passwordhash", "", "Set a new IMAP/SMTP password (hash)")
 	flag.Var(&peerAddrs, "peer", "Connect to a specific Yggdrasil static peer (this option can be given more than once)")
@@ -77,7 +77,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer storage.Close()
+	defer storage.Close() // nolint:errcheck
 	log.Printf("Using database file %q\n", *database)
 
 	skStr, err := storage.ConfigGet("private_key")
@@ -128,7 +128,7 @@ func main() {
 			log.Println("The supplied passwords do not match")
 			os.Exit(1)
 		}
-		
+
 		// trim away whitespace of UTF-8 bytes now as string
 		finalPassword := strings.TrimSpace(string(password1))
 
@@ -146,19 +146,19 @@ func main() {
 		os.Exit(0)
 
 	case passwordhash != nil && *passwordhash != "":
-		var hash string = strings.TrimSpace(*passwordhash);
+		var hash = strings.TrimSpace(*passwordhash)
 		if len(hash) == 0 {
-			log.Println("Password hash cannot be blank");
-			os.Exit(1);
+			log.Println("Password hash cannot be blank")
+			os.Exit(1)
 		}
-		
-		log.Printf("Using password hash: '%v'\n", hash);
+
+		log.Printf("Using password hash: '%v'\n", hash)
 
 		if _, err := bcrypt.Cost(([]byte)(hash)); err != nil {
-			log.Printf("The provided hash is invalid %v\n", err);
-			os.Exit(1);
+			log.Printf("The provided hash is invalid %v\n", err)
+			os.Exit(1)
 		} else if err := storage.ConfigSetPassword(hash); err != nil {
-			log.Println("Failed to set password: ", err);
+			log.Println("Failed to set password: ", err)
 			os.Exit(1)
 		}
 

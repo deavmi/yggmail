@@ -120,7 +120,9 @@ func (q *Queue) run() {
 		_, mail, err := q.queues.Storage.MailSelect("Outbox", ref.ID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				q.queues.Storage.QueueDeleteDestinationForID("Outbox", ref.ID)
+				if err = q.queues.Storage.QueueDeleteDestinationForID("Outbox", ref.ID); err != nil {
+					q.queues.Log.Println("Failed delete queue destination for ID", ref.ID, "due to error:", err)
+				}
 			} else {
 				q.queues.Log.Println("Failed to get mail", ref.ID, "due to error:", err)
 			}
@@ -134,13 +136,13 @@ func (q *Queue) run() {
 			if err != nil {
 				return fmt.Errorf("q.queues.Transport.Dial: %w", err)
 			}
-			defer conn.Close()
+			defer conn.Close() // nolint:errcheck
 
 			client, err := smtp.NewClient(conn, q.destination)
 			if err != nil {
 				return fmt.Errorf("smtp.NewClient: %w", err)
 			}
-			defer client.Close()
+			defer client.Close() // nolint:errcheck
 
 			if err := client.Hello(hex.EncodeToString(q.queues.Config.PublicKey)); err != nil {
 				q.queues.Log.Println("Remote server", q.destination, "did not accept HELLO:", err)
@@ -161,7 +163,7 @@ func (q *Queue) run() {
 			if err != nil {
 				return fmt.Errorf("client.Data: %w", err)
 			}
-			defer writer.Close()
+			defer writer.Close() // nolint:errcheck
 
 			if _, err := writer.Write(mail.Mail); err != nil {
 				return fmt.Errorf("writer.Write: %w", err)

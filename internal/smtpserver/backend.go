@@ -62,16 +62,16 @@ func (b *Backend) Login(state *smtp.ConnectionState, username, password string) 
 		}, nil
 
 	case BackendModeExternal:
-		return nil, fmt.Errorf("Not expecting authenticated connection on external backend")
+		return nil, fmt.Errorf("not expecting authenticated connection on external backend")
 	}
 
-	return nil, fmt.Errorf("Authenticated login failed")
+	return nil, fmt.Errorf("authenticated login failed")
 }
 
 func (b *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
 	switch b.Mode {
 	case BackendModeInternal:
-		return nil, fmt.Errorf("Not expecting anonymous connection on internal backend")
+		return nil, fmt.Errorf("not expecting anonymous connection on internal backend")
 
 	case BackendModeExternal:
 		// The connection came from our overlay listener, so we should check
@@ -82,7 +82,7 @@ func (b *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, err
 		}
 		remote := hex.EncodeToString(pks)
 		if state.Hostname != remote {
-			return nil, fmt.Errorf("You are not who you claim to be")
+			return nil, fmt.Errorf("you are not who you claim to be")
 		}
 
 		b.Log.Println("Incoming SMTP session from", remote)
@@ -93,5 +93,5 @@ func (b *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, err
 		}, nil
 	}
 
-	return nil, fmt.Errorf("Anonymous login failed")
+	return nil, fmt.Errorf("anonymous login failed")
 }
