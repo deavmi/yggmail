@@ -77,7 +77,7 @@ func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
 			qs.Log.Printf("Mail recipient is self '%s', quick path activating...\n", host);
 
 			// Were we the only person? Then move from Outbox -> Sent
-			if len(rcpts) == 0 {
+			if len(rcpts) == 1 {
 				qs.Log.Printf("We, '%s', were the only recipient, moving from Outbox to Sent...\n", host)
 				if e := qs.Storage.MailMove("Outbox", pid, "Sent"); e == nil {
 					qs.Log.Printf("Placed copy of mail solely addressed to self '%v' in Sent\n", pid)
