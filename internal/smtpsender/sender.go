@@ -82,13 +82,13 @@ func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
 				if e := qs.Storage.MailMove("Outbox", pid, "INBOX"); e == nil {
 					qs.Log.Printf("Placed mail to self '%v' in INBOX\n", pid)
 				} else {
-					qs.Log.Printf("Error placing mail to self in INBOX\n")
+					qs.Log.Printf("Error placing mail to self in INBOX: %v\n", e)
 				}
 			} else { // Otherwise we are to simply copy one into INBOX
 				if p, e := qs.Storage.MailCreate("INBOX", content); e == nil {
 					qs.Log.Printf("Placed mail to self '%v' in INBOX\n", p)
 				} else {
-					qs.Log.Printf("Error placing mail to self in INBOX\n")
+					qs.Log.Printf("Error placing mail to self in INBOX: %v\n", e)
 				}	
 			}
 		
