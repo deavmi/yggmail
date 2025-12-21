@@ -57,8 +57,6 @@ func (qs *Queues) manager() {
 }
 
 func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
-	// TODO: Check that if recpts ONLY contains ourselves
-	// then we don't need to place it into Outbox AT all
 	pid, err := qs.Storage.MailCreate("Outbox", content)
 
 	if err != nil {
