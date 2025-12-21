@@ -57,6 +57,8 @@ func (qs *Queues) manager() {
 }
 
 func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
+	// TODO: Check that if recpts ONLY contains ourselves
+	// then we don't need to place it into Outbox AT all
 	pid, err := qs.Storage.MailCreate("Outbox", content)
 
 	if err != nil {
@@ -74,6 +76,24 @@ func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
 		}
 		host := hex.EncodeToString(pk)
 		if host == hex.EncodeToString(qs.Config.PublicKey) {
+			qs.Log.Printf("Mail recipient is self '%s', quick path activating...\n", host);
+
+			// Were we the only person? Then move from Outbox -> Inbox
+			if len(rcpts) == 0 {
+				qs.Log.Printf("We, '%s', were the only recipient, moving from Outbox to INBOX...\n", host)
+				if e := qs.Storage.MailMove("Outbox", pid, "INBOX"); e == nil {
+					qs.Log.Printf("Placed mail to self '%v' in INBOX\n", pid)
+				} else {
+					qs.Log.Printf("Error placing mail to self in INBOX\n")
+				}
+			} else { // Otherwise we are to simply copy one into INBOX
+				if p, e := qs.Storage.MailCreate("INBOX", content); e == nil {
+					qs.Log.Printf("Placed mail to self '%v' in INBOX\n", p)
+				} else {
+					qs.Log.Printf("Error placing mail to self in INBOX\n")
+				}	
+			}
+		
 			continue
 		}
 
