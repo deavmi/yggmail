@@ -314,7 +314,14 @@ func (t *TableMails) MailMove(mailbox string, id int, destination string) error 
 	})
 }
 
-func moveMailTx(txn *sql.Tx, mailbox string, id int, destination string) error {
+func (t *TableMails) MailCopy(mailbox string, id int, destination string) error {
+	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
+		_, err := copyMailTx(txn, mailbox, id, destination)
+		return err
+	})
+}
+
+func copyMailTx(txn *sql.Tx, mailbox string, id int, destination string) (int, error) {
 	var (
 		mail                             []byte
 		datetime                         int64
@@ -326,21 +333,28 @@ func moveMailTx(txn *sql.Tx, mailbox string, id int, destination string) error {
 	`, mailbox, id).Scan(
 		&mail, &datetime, &seen, &answered, &flagged, &deleted,
 	); err != nil {
-		return fmt.Errorf("select source mail: %w", err)
+		return 0, fmt.Errorf("select source mail: %w", err)
 	}
 
 	var destinationID int
 	if err := txn.QueryRow(`
 		SELECT IFNULL(MAX(id)+1, 1) FROM mails WHERE mailbox = $1
 	`, destination).Scan(&destinationID); err != nil {
-		return fmt.Errorf("select destination mail ID: %w", err)
+		return 0, fmt.Errorf("select destination mail ID: %w", err)
 	}
 	if _, err := txn.Exec(`
 		INSERT INTO mails (
 			mailbox, id, mail, datetime, seen, answered, flagged, deleted
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`, destination, destinationID, mail, datetime, seen, answered, flagged, deleted); err != nil {
-		return fmt.Errorf("insert destination mail: %w", err)
+		return 0, fmt.Errorf("insert destination mail: %w", err)
+	}
+	return destinationID, nil
+}
+
+func moveMailTx(txn *sql.Tx, mailbox string, id int, destination string) error {
+	if _, err := copyMailTx(txn, mailbox, id, destination); err != nil {
+		return err
 	}
 	if _, err := txn.Exec(
 		"DELETE FROM mails WHERE mailbox = $1 AND id = $2",

@@ -235,3 +235,36 @@ func TestQueueCleanupUsesDestinationAndMailbox(t *testing.T) {
 		t.Fatalf("queued refs after cleanup = %+v", refs)
 	}
 }
+
+func TestMailCopyPreservesInternalDate(t *testing.T) {
+	store, err := NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	for _, mailbox := range []string{"INBOX", "Sent"} {
+		if err := store.MailboxCreate(mailbox); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id, err := store.MailCreate("INBOX", []byte("mail"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(
+		"UPDATE mails SET datetime = 12345 WHERE mailbox = 'INBOX' AND id = ?",
+		id,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MailCopy("INBOX", id, "Sent"); err != nil {
+		t.Fatal(err)
+	}
+	_, copied, err := store.MailSelect("Sent", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copied.Date.Unix() != 12345 {
+		t.Fatalf("copied internal date = %d, want 12345", copied.Date.Unix())
+	}
+}

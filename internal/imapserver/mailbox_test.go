@@ -175,3 +175,41 @@ func TestMoveFromOutboxCancelsDeliveryAndAllocatesDestinationID(t *testing.T) {
 		t.Fatalf("moved body = %q", moved.Mail)
 	}
 }
+
+func TestCopyPreservesFlagsWithoutChangingSourceMailbox(t *testing.T) {
+	mailbox, store := testMailbox(t)
+	if err := store.MailboxCreate("Sent"); err != nil {
+		t.Fatal(err)
+	}
+	firstID, err := store.MailCreate("INBOX", []byte("unrelated"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceID, err := store.MailCreate("INBOX", []byte("source"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MailUpdateFlags("INBOX", sourceID, true, true, true, false); err != nil {
+		t.Fatal(err)
+	}
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uint32(sourceID))
+	if err := mailbox.CopyMessages(true, seqSet, "Sent"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, unrelated, err := store.MailSelect("INBOX", firstID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unrelated.Seen || unrelated.Answered || unrelated.Flagged || unrelated.Deleted {
+		t.Fatalf("unrelated source flags changed: %+v", unrelated)
+	}
+	_, copied, err := store.MailSelect("Sent", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(copied.Mail) != "source" || !copied.Seen || !copied.Answered || !copied.Flagged {
+		t.Fatalf("copied mail = %+v", copied)
+	}
+}

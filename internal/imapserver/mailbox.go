@@ -392,18 +392,8 @@ func (mbox *Mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 	}
 
 	for _, id := range ids {
-		_, mail, err := mbox.backend.Storage.MailSelect(mbox.name, int(id))
-		if err != nil {
-			return fmt.Errorf("mbox.backend.Storage.MailSelect: %w", err)
-		}
-		pid, err := mbox.backend.Storage.MailCreate(destName, mail.Mail)
-		if err != nil {
-			return fmt.Errorf("mbox.backend.Storage.MailCreate: %w", err)
-		}
-		if err = mbox.backend.Storage.MailUpdateFlags(
-			mbox.name, pid, mail.Seen, mail.Answered, mail.Flagged, mail.Deleted,
-		); err != nil {
-			return fmt.Errorf("mbox.backend.Storage.MailUpdateFlags: %w", err)
+		if err := mbox.backend.Storage.MailCopy(mbox.name, int(id), destName); err != nil {
+			return fmt.Errorf("mbox.backend.Storage.MailCopy: %w", err)
 		}
 	}
 	return nil
