@@ -37,6 +37,20 @@ type Backend struct {
 	Notify  *imapserver.IMAPNotify
 }
 
+func AuthenticateLogin(
+	backend *Backend,
+	state *smtp.ConnectionState,
+	setSession func(smtp.Session),
+	username, password string,
+) error {
+	session, err := backend.Login(state, username, password)
+	if err != nil {
+		return err
+	}
+	setSession(session)
+	return nil
+}
+
 func (b *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
 	switch b.Mode {
 	case BackendModeInternal:

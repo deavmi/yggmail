@@ -11,6 +11,7 @@ package imapserver
 import (
 	"log"
 
+	"github.com/emersion/go-imap"
 	idle "github.com/emersion/go-imap-idle"
 	move "github.com/emersion/go-imap-move"
 	"github.com/emersion/go-imap/server"
@@ -37,8 +38,9 @@ func NewIMAPServer(backend *Backend, addr string, insecure bool) (*IMAPServer, *
 	// s.server.Enable(s.notify)
 	s.server.EnableAuth(sasl.Login, func(conn server.Conn) sasl.Server {
 		return sasl.NewLoginServer(func(username, password string) error {
-			_, err := s.backend.Login(nil, username, password)
-			return err
+			return authenticateLogin(
+				s.backend, conn.Info(), conn.Context(), username, password,
+			)
 		})
 	})
 	go func() {
@@ -47,4 +49,19 @@ func NewIMAPServer(backend *Backend, addr string, insecure bool) (*IMAPServer, *
 		}
 	}()
 	return s, s.notify, nil
+}
+
+func authenticateLogin(
+	backend *Backend,
+	info *imap.ConnInfo,
+	context *server.Context,
+	username, password string,
+) error {
+	user, err := backend.Login(info, username, password)
+	if err != nil {
+		return err
+	}
+	context.State = imap.AuthenticatedState
+	context.User = user
+	return nil
 }

@@ -216,8 +216,10 @@ func main() {
 		localServer.AllowInsecureAuth = true
 		localServer.EnableAuth(sasl.Login, func(conn *smtp.Conn) sasl.Server {
 			return sasl.NewLoginServer(func(username, password string) error {
-				_, err := localBackend.Login(nil, username, password)
-				return err
+				state := conn.State()
+				return smtpserver.AuthenticateLogin(
+					localBackend, &state, conn.SetSession, username, password,
+				)
 			})
 		})
 
