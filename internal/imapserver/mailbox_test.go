@@ -55,7 +55,7 @@ func TestMailboxPublishesCrossConnectionUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	created, ok := nextUpdate(t, mailbox.backend.Updates()).(*imapbackend.MailboxUpdate)
-	if !ok || created.MailboxStatus.Messages != 1 || created.Mailbox() != "INBOX" {
+	if !ok || created.Messages != 1 || created.Mailbox() != "INBOX" {
 		t.Fatalf("create update = %#v", created)
 	}
 
@@ -67,8 +67,8 @@ func TestMailboxPublishesCrossConnectionUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	flagged, ok := nextUpdate(t, mailbox.backend.Updates()).(*imapbackend.MessageUpdate)
-	if !ok || flagged.Message.Uid != 1 ||
-		!slices.Contains(flagged.Message.Flags, imap.SeenFlag) {
+	if !ok || flagged.Uid != 1 ||
+		!slices.Contains(flagged.Flags, imap.SeenFlag) {
 		t.Fatalf("flag update = %#v", flagged)
 	}
 
