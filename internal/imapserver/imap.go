@@ -25,11 +25,12 @@ type IMAPServer struct {
 }
 
 func NewIMAPServer(backend *Backend, addr string, insecure bool) (*IMAPServer, *IMAPNotify, error) {
+	backend.enableUpdates()
 	s := &IMAPServer{
 		server:  server.New(backend),
 		backend: backend,
 	}
-	s.notify = NewIMAPNotify(s.server, backend.Log)
+	s.notify = NewIMAPNotify(backend)
 	s.server.Addr = addr
 	s.server.AllowInsecureAuth = insecure
 	//s.server.Debug = os.Stdout

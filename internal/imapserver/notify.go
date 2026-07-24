@@ -9,40 +9,21 @@
 package imapserver
 
 import (
-	"log"
-
-	"github.com/emersion/go-imap"
-	"github.com/emersion/go-imap/server"
+	"fmt"
 )
 
 type IMAPNotify struct {
-	server *server.Server
-	log    *log.Logger
+	backend *Backend
 }
 
 func (ext *IMAPNotify) NotifyNew(count int) error {
-	var firstErr error
-	ext.server.ForEachConn(func(c server.Conn) {
-		context := c.Context()
-		if context.State != imap.SelectedState ||
-			context.Mailbox == nil ||
-			context.Mailbox.Name() != "INBOX" {
-			return
-		}
-		response := imap.NewUntaggedResp([]interface{}{
-			uint32(count),
-			imap.RawString("EXISTS"),
-		})
-		if err := c.WriteResp(response); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	})
-	return firstErr
+	if count < 0 {
+		return fmt.Errorf("invalid INBOX message count %d", count)
+	}
+	ext.backend.sendMailboxCount("INBOX", count)
+	return nil
 }
 
-func NewIMAPNotify(s *server.Server, log *log.Logger) *IMAPNotify {
-	return &IMAPNotify{
-		server: s,
-		log:    log,
-	}
+func NewIMAPNotify(backend *Backend) *IMAPNotify {
+	return &IMAPNotify{backend: backend}
 }

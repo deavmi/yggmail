@@ -13,9 +13,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/emersion/go-imap"
+	"github.com/emersion/go-imap/backend"
 	"github.com/emersion/go-imap/backend/backendutil"
 	"github.com/emersion/go-message/textproto"
 	"github.com/neilalexander/yggmail/internal/storage/types"
@@ -346,6 +348,9 @@ func (mbox *Mailbox) CreateMessage(flags []string, date time.Time, body imap.Lit
 	); err != nil {
 		return err
 	}
+	if err := mbox.notifyMessageCount(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -356,7 +361,7 @@ func (mbox *Mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 	}
 
 	for _, id := range ids {
-		_, mail, err := mbox.backend.Storage.MailSelect(mbox.name, int(id))
+		seq, mail, err := mbox.backend.Storage.MailSelect(mbox.name, int(id))
 		if err != nil {
 			return fmt.Errorf("mbox.backend.Storage.MailSelect: %w", err)
 		}
@@ -369,6 +374,14 @@ func (mbox *Mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 		); err != nil {
 			return err
 		}
+		mbox.backend.sendUpdate(&backend.MessageUpdate{
+			Update: backend.NewUpdate("", mbox.name),
+			Message: &imap.Message{
+				SeqNum: uint32(seq),
+				Uid:    uint32(mail.ID),
+				Flags:  mailFlags(mail),
+			},
+		})
 	}
 	return nil
 }
@@ -424,11 +437,30 @@ func (mbox *Mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 			return fmt.Errorf("mbox.backend.Storage.MailCopy: %w", err)
 		}
 	}
-	return nil
+	return mbox.notifyMailboxCount(destName)
 }
 
 func (mbox *Mailbox) Expunge() error {
-	return mbox.backend.Storage.MailExpunge(mbox.name)
+	mails, err := mbox.backend.Storage.MailList(mbox.name, nil)
+	if err != nil {
+		return err
+	}
+	var seqNums []uint32
+	for i, mail := range mails {
+		if mail.Deleted {
+			seqNums = append(seqNums, uint32(i+1))
+		}
+	}
+	if err := mbox.backend.Storage.MailExpunge(mbox.name); err != nil {
+		return err
+	}
+	for i := len(seqNums) - 1; i >= 0; i-- {
+		mbox.backend.sendUpdate(&backend.ExpungeUpdate{
+			Update: backend.NewUpdate("", mbox.name),
+			SeqNum: seqNums[i],
+		})
+	}
+	return nil
 }
 
 func (mbox *Mailbox) MoveMessages(uid bool, seqset *imap.SeqSet, dest string) error {
@@ -441,10 +473,42 @@ func (mbox *Mailbox) MoveMessages(uid bool, seqset *imap.SeqSet, dest string) er
 		return fmt.Errorf("mbox.getIDsFromSeqSet: %w", err)
 	}
 
+	type messageRef struct {
+		id  int32
+		seq int
+	}
+	refs := make([]messageRef, 0, len(ids))
 	for _, id := range ids {
-		if err := mbox.backend.Storage.MailMove(mbox.name, int(id), dest); err != nil {
+		seq, _, err := mbox.backend.Storage.MailSelect(mbox.name, int(id))
+		if err != nil {
 			return err
 		}
+		refs = append(refs, messageRef{id: id, seq: seq})
 	}
+	sort.Slice(refs, func(i, j int) bool {
+		return refs[i].seq > refs[j].seq
+	})
+	for _, ref := range refs {
+		if err := mbox.backend.Storage.MailMove(mbox.name, int(ref.id), dest); err != nil {
+			return err
+		}
+		mbox.backend.sendUpdate(&backend.ExpungeUpdate{
+			Update: backend.NewUpdate("", mbox.name),
+			SeqNum: uint32(ref.seq),
+		})
+	}
+	return mbox.notifyMailboxCount(dest)
+}
+
+func (mbox *Mailbox) notifyMessageCount() error {
+	return mbox.notifyMailboxCount(mbox.name)
+}
+
+func (mbox *Mailbox) notifyMailboxCount(name string) error {
+	count, err := mbox.backend.Storage.MailCount(name)
+	if err != nil {
+		return fmt.Errorf("mbox.backend.Storage.MailCount: %w", err)
+	}
+	mbox.backend.sendMailboxCount(name, count)
 	return nil
 }

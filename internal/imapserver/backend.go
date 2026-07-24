@@ -25,6 +25,32 @@ type Backend struct {
 	Log     *log.Logger
 	Storage storage.Storage
 	Server  *IMAPServer
+	updates chan backend.Update
+}
+
+func (b *Backend) enableUpdates() {
+	if b.updates == nil {
+		b.updates = make(chan backend.Update, 64)
+	}
+}
+
+func (b *Backend) Updates() <-chan backend.Update {
+	return b.updates
+}
+
+func (b *Backend) sendUpdate(update backend.Update) {
+	if b.updates != nil {
+		b.updates <- update
+	}
+}
+
+func (b *Backend) sendMailboxCount(mailbox string, count int) {
+	status := imap.NewMailboxStatus(mailbox, []imap.StatusItem{imap.StatusMessages})
+	status.Messages = uint32(count)
+	b.sendUpdate(&backend.MailboxUpdate{
+		Update:        backend.NewUpdate("", mailbox),
+		MailboxStatus: status,
+	})
 }
 
 func (b *Backend) Login(conn *imap.ConnInfo, username, password string) (backend.User, error) {
@@ -48,26 +74,7 @@ func (b *Backend) Login(conn *imap.ConnInfo, username, password string) (backend
 		backend:  b,
 		username: username,
 		conn:     conn,
-		log:			b.Log,
+		log:      b.Log,
 	}
 	return user, nil
 }
-
-/*
-func (b *Backend) NotifyNew(id int) error {
-	b.Server.server.ForEachConn(func(conn server.Conn) {
-		notify := false
-		for _, cap := range conn.Capabilities() {
-			if cap == "NOTIFY" {
-				notify = true
-			}
-		}
-		if !notify {
-			return
-		}
-		conn.WaitReady()
-		conn.WriteResp()
-	})
-	return nil
-}
-*/

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap"
+	imapbackend "github.com/emersion/go-imap/backend"
 	"github.com/neilalexander/yggmail/internal/storage/sqlite3"
 )
 
@@ -31,6 +32,59 @@ func testMailbox(t *testing.T) (*Mailbox, *sqlite3.SQLite3Storage) {
 		backend: &Backend{Storage: store},
 		name:    "INBOX",
 	}, store
+}
+
+func nextUpdate(t *testing.T, updates <-chan imapbackend.Update) imapbackend.Update {
+	t.Helper()
+	select {
+	case update := <-updates:
+		return update
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for IMAP update")
+		return nil
+	}
+}
+
+func TestMailboxPublishesCrossConnectionUpdates(t *testing.T) {
+	mailbox, _ := testMailbox(t)
+	mailbox.backend.enableUpdates()
+
+	if err := mailbox.CreateMessage(
+		nil, time.Time{}, bytes.NewBufferString("Subject: test\r\n\r\nbody"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	created, ok := nextUpdate(t, mailbox.backend.Updates()).(*imapbackend.MailboxUpdate)
+	if !ok || created.MailboxStatus.Messages != 1 || created.Mailbox() != "INBOX" {
+		t.Fatalf("create update = %#v", created)
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(1)
+	if err := mailbox.UpdateMessagesFlags(
+		true, seqSet, imap.AddFlags, []string{imap.SeenFlag},
+	); err != nil {
+		t.Fatal(err)
+	}
+	flagged, ok := nextUpdate(t, mailbox.backend.Updates()).(*imapbackend.MessageUpdate)
+	if !ok || flagged.Message.Uid != 1 ||
+		!slices.Contains(flagged.Message.Flags, imap.SeenFlag) {
+		t.Fatalf("flag update = %#v", flagged)
+	}
+
+	if err := mailbox.UpdateMessagesFlags(
+		true, seqSet, imap.AddFlags, []string{imap.DeletedFlag},
+	); err != nil {
+		t.Fatal(err)
+	}
+	_ = nextUpdate(t, mailbox.backend.Updates())
+	if err := mailbox.Expunge(); err != nil {
+		t.Fatal(err)
+	}
+	expunged, ok := nextUpdate(t, mailbox.backend.Updates()).(*imapbackend.ExpungeUpdate)
+	if !ok || expunged.SeqNum != 1 || expunged.Mailbox() != "INBOX" {
+		t.Fatalf("expunge update = %#v", expunged)
+	}
 }
 
 func TestListMessagesUsesMailboxSequenceOrder(t *testing.T) {
