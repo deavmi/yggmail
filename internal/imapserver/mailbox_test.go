@@ -138,3 +138,40 @@ func TestListMessagesFetchesBody(t *testing.T) {
 		t.Fatalf("body = %q", body)
 	}
 }
+
+func TestMoveFromOutboxCancelsDeliveryAndAllocatesDestinationID(t *testing.T) {
+	mailbox, store := testMailbox(t)
+	mailbox.name = "Outbox"
+	for _, name := range []string{"Outbox", "Archive"} {
+		if err := store.MailboxCreate(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.MailCreate("Archive", []byte("existing")); err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.MailCreate("Outbox", []byte("outgoing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.QueueInsertDestinationForID("peer", id, "from", "to"); err != nil {
+		t.Fatal(err)
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uint32(id))
+	if err := mailbox.MoveMessages(true, seqSet, "Archive"); err != nil {
+		t.Fatal(err)
+	}
+
+	if pending, err := store.QueueSelectIsMessagePendingSend("Outbox", id); err != nil || pending {
+		t.Fatalf("pending = %v, err = %v", pending, err)
+	}
+	_, moved, err := store.MailSelect("Archive", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(moved.Mail) != "outgoing" {
+		t.Fatalf("moved body = %q", moved.Mail)
+	}
+}

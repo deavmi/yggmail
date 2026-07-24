@@ -427,11 +427,6 @@ func (mbox *Mailbox) MoveMessages(uid bool, seqset *imap.SeqSet, dest string) er
 		if err := mbox.backend.Storage.MailMove(mbox.name, int(id), dest); err != nil {
 			return err
 		}
-		if mbox.name == "Outbox" {
-			if err := mbox.backend.Storage.QueueDeleteDestinationForID("Outbox", int(id)); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }
