@@ -42,7 +42,7 @@ const queueSelectDestinationsStmt = `
 `
 
 const queueSelectIDsForDestinationStmt = `
-	SELECT id, mail, rcpt FROM queue WHERE destination = $1
+	SELECT mailbox, id, mail, rcpt FROM queue WHERE destination = $1
 	ORDER BY id DESC
 `
 
@@ -122,14 +122,15 @@ func (t *TableQueue) QueueMailIDsForDestination(destination string) ([]types.Que
 	var ids []types.QueuedMail
 	for rows.Next() {
 		var id int
-		var from, rcpt string
-		if err := rows.Scan(&id, &from, &rcpt); err != nil {
+		var mailbox, from, rcpt string
+		if err := rows.Scan(&mailbox, &id, &from, &rcpt); err != nil {
 			return nil, fmt.Errorf("rows.Scan: %w", err)
 		}
 		ids = append(ids, types.QueuedMail{
-			ID:   id,
-			From: from,
-			Rcpt: rcpt,
+			Mailbox: mailbox,
+			ID:      id,
+			From:    from,
+			Rcpt:    rcpt,
 		})
 	}
 	return ids, nil
@@ -142,9 +143,9 @@ func (t *TableQueue) QueueInsertDestinationForID(destination string, id int, fro
 	})
 }
 
-func (t *TableQueue) QueueDeleteDestinationForID(destination string, id int) error {
+func (t *TableQueue) QueueDeleteDestinationForID(destination, mailbox string, id int) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.queueDeleteIDForDestination.Exec(destination, "Outbox", id)
+		_, err := t.queueDeleteIDForDestination.Exec(destination, mailbox, id)
 		return err
 	})
 }

@@ -194,3 +194,44 @@ func TestQueueMarkDeliveredRollsBackMissingSentMailbox(t *testing.T) {
 		t.Fatalf("Outbox mail was lost: %v", err)
 	}
 }
+
+func TestQueueCleanupUsesDestinationAndMailbox(t *testing.T) {
+	store, err := NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	for _, mailbox := range []string{"Outbox", "Archive"} {
+		if err := store.MailboxCreate(mailbox); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id, err := store.MailCreate("Archive", []byte("legacy moved mail"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(
+		"INSERT INTO queue (destination, mailbox, id, mail, rcpt) VALUES (?, ?, ?, ?, ?)",
+		"peer", "Archive", id, "from", "to",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	refs, err := store.QueueMailIDsForDestination("peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].Mailbox != "Archive" {
+		t.Fatalf("queued refs = %+v", refs)
+	}
+	if err := store.QueueDeleteDestinationForID("peer", "Archive", id); err != nil {
+		t.Fatal(err)
+	}
+	refs, err = store.QueueMailIDsForDestination("peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 0 {
+		t.Fatalf("queued refs after cleanup = %+v", refs)
+	}
+}

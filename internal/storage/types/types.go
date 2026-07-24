@@ -22,7 +22,8 @@ type Mail struct {
 }
 
 type QueuedMail struct {
-	ID   int
-	From string
-	Rcpt string
+	Mailbox string
+	ID      int
+	From    string
+	Rcpt    string
 }

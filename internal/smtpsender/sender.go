@@ -118,10 +118,20 @@ func (q *Queue) run() {
 	defer q.queues.Storage.MailExpunge("Outbox") // nolint:errcheck
 
 	for _, ref := range refs {
+		if ref.Mailbox != "Outbox" {
+			if err := q.queues.Storage.QueueDeleteDestinationForID(
+				q.destination, ref.Mailbox, ref.ID,
+			); err != nil {
+				q.queues.Log.Println("Failed to clean stale queue destination for ID", ref.ID, "due to error:", err)
+			}
+			continue
+		}
 		_, mail, err := q.queues.Storage.MailSelect("Outbox", ref.ID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				if err = q.queues.Storage.QueueDeleteDestinationForID("Outbox", ref.ID); err != nil {
+				if err = q.queues.Storage.QueueDeleteDestinationForID(
+					q.destination, ref.Mailbox, ref.ID,
+				); err != nil {
 					q.queues.Log.Println("Failed delete queue destination for ID", ref.ID, "due to error:", err)
 				}
 			} else {
