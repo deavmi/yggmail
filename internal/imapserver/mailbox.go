@@ -29,8 +29,8 @@ type Mailbox struct {
 	user    *User
 }
 
-func (mbox *Mailbox) getIDsFromSeqSet(uid bool, seqSet *imap.SeqSet) ([]int, error) {
-	mails, err := mbox.backend.Storage.MailList(mbox.name, nil)
+func (mbox *Mailbox) getMailsFromSeqSet(uid bool, seqSet *imap.SeqSet) ([]*types.Mail, error) {
+	mails, err := mbox.backend.Storage.MailListMetadata(mbox.name, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mbox.backend.Storage.MailList: %w", err)
 	}
@@ -41,17 +41,17 @@ func (mbox *Mailbox) getIDsFromSeqSet(uid bool, seqSet *imap.SeqSet) ([]int, err
 	}
 	maxSeq := uint32(len(mails))
 
-	ids := make([]int, 0, len(mails))
-	for i, mail := range mails {
-		number, maximum := uint32(i+1), maxSeq
+	matches := make([]*types.Mail, 0, len(mails))
+	for _, mail := range mails {
+		number, maximum := uint32(mail.Seq), maxSeq
 		if uid {
 			number, maximum = uint32(mail.ID), maxUID
 		}
 		if seqSetContains(seqSet, number, maximum) {
-			ids = append(ids, mail.ID)
+			matches = append(matches, mail)
 		}
 	}
-	return ids, nil
+	return matches, nil
 }
 
 func (mbox *Mailbox) Name() string {
@@ -123,7 +123,7 @@ func (mbox *Mailbox) Check() error {
 func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.FetchItem, ch chan<- *imap.Message) error {
 	defer close(ch)
 
-	mails, err := mbox.backend.Storage.MailList(mbox.name, nil)
+	mails, err := mbox.backend.Storage.MailListMetadata(mbox.name, nil)
 	if err != nil {
 		return fmt.Errorf("mbox.backend.Storage.MailList: %w", err)
 	}
@@ -133,8 +133,8 @@ func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 	if len(mails) > 0 {
 		maxUID = uint32(mails[len(mails)-1].ID)
 	}
-	for i, mail := range mails {
-		mseq := uint32(i + 1)
+	for _, mail := range mails {
+		mseq := uint32(mail.Seq)
 		id := uint32(mail.ID)
 		number, maximum := mseq, maxSeq
 		if uid {
@@ -148,8 +148,19 @@ func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 		fetched.SeqNum = mseq
 		fetched.Uid = id
 
+		var (
+			data       []byte
+			dataLoaded bool
+		)
 		get := func() (io.Reader, textproto.Header, error) {
-			bodyreader := bufio.NewReader(bytes.NewReader(mail.Mail))
+			if !dataLoaded {
+				data, err = mbox.backend.Storage.MailData(mbox.name, mail.ID)
+				if err != nil {
+					return nil, textproto.Header{}, err
+				}
+				dataLoaded = true
+			}
+			bodyreader := bufio.NewReader(bytes.NewReader(data))
 			hdr, err := textproto.ReadHeader(bodyreader)
 			if err != nil {
 				return nil, textproto.Header{}, fmt.Errorf("textproto.ReadHeader: %w", err)
@@ -196,7 +207,7 @@ func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 				fetched.InternalDate = mail.Date
 
 			case imap.FetchRFC822Size:
-				fetched.Size = uint32(len(mail.Mail))
+				fetched.Size = mail.Size
 
 			case imap.FetchUid:
 				fetched.Uid = id
@@ -235,7 +246,7 @@ func (mbox *Mailbox) SearchMessages(uid bool, criteria *imap.SearchCriteria) ([]
 	if !uid || criteria.SeqNum != nil {
 		seen = nil
 	}
-	mails, err := mbox.backend.Storage.MailList(mbox.name, seen)
+	mails, err := mbox.backend.Storage.MailListMetadata(mbox.name, seen)
 	if err != nil {
 		return nil, fmt.Errorf("mbox.backend.Storage.MailList: %w", err)
 	}
@@ -246,8 +257,8 @@ func (mbox *Mailbox) SearchMessages(uid bool, criteria *imap.SearchCriteria) ([]
 		maxUID = uint32(mails[len(mails)-1].ID)
 	}
 	var ids []uint32
-	for i, mail := range mails {
-		seqNum := uint32(i + 1)
+	for _, mail := range mails {
+		seqNum := uint32(mail.Seq)
 		mailUID := uint32(mail.ID)
 		if criteria.SeqNum != nil && !seqSetContains(criteria.SeqNum, seqNum, maxSeq) {
 			continue
@@ -344,29 +355,31 @@ func (mbox *Mailbox) CreateMessage(flags []string, date time.Time, body imap.Lit
 }
 
 func (mbox *Mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.FlagsOp, flags []string) error {
-	ids, err := mbox.getIDsFromSeqSet(uid, seqSet)
+	mails, err := mbox.getMailsFromSeqSet(uid, seqSet)
 	if err != nil {
-		return fmt.Errorf("mbox.getIDsFromSeqSet: %w", err)
+		return fmt.Errorf("mbox.getMailsFromSeqSet: %w", err)
 	}
 
-	for _, id := range ids {
-		seq, mail, err := mbox.backend.Storage.MailSelect(mbox.name, id)
-		if err != nil {
-			return fmt.Errorf("mbox.backend.Storage.MailSelect: %w", err)
-		}
+	updates := make([]types.MailFlagsUpdate, 0, len(mails))
+	for _, mail := range mails {
 		updated := backendutil.UpdateFlags(mailFlags(mail), op, flags)
 		applyMailFlags(mail, updated)
-
-		if err := mbox.backend.Storage.MailUpdateFlags(
-			mbox.name, mail.ID, mail.Seen,
-			mail.Answered, mail.Flagged, mail.Deleted,
-		); err != nil {
-			return err
-		}
+		updates = append(updates, types.MailFlagsUpdate{
+			ID:       mail.ID,
+			Seen:     mail.Seen,
+			Answered: mail.Answered,
+			Flagged:  mail.Flagged,
+			Deleted:  mail.Deleted,
+		})
+	}
+	if err := mbox.backend.Storage.MailUpdateFlagsBulk(mbox.name, updates); err != nil {
+		return err
+	}
+	for _, mail := range mails {
 		mbox.backend.sendUpdate(&backend.MessageUpdate{
 			Update: backend.NewUpdate("", mbox.name),
 			Message: &imap.Message{
-				SeqNum: uint32(seq),
+				SeqNum: uint32(mail.Seq),
 				Uid:    uint32(mail.ID),
 				Flags:  mailFlags(mail),
 			},
@@ -417,13 +430,13 @@ func (mbox *Mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 		return fmt.Errorf("can't copy into Outbox as it is a protected folder")
 	}
 
-	ids, err := mbox.getIDsFromSeqSet(uid, seqSet)
+	mails, err := mbox.getMailsFromSeqSet(uid, seqSet)
 	if err != nil {
-		return fmt.Errorf("mbox.getIDsFromSeqSet: %w", err)
+		return fmt.Errorf("mbox.getMailsFromSeqSet: %w", err)
 	}
 
-	for _, id := range ids {
-		if err := mbox.backend.Storage.MailCopy(mbox.name, id, destName); err != nil {
+	for _, mail := range mails {
+		if err := mbox.backend.Storage.MailCopy(mbox.name, mail.ID, destName); err != nil {
 			return fmt.Errorf("mbox.backend.Storage.MailCopy: %w", err)
 		}
 	}
@@ -431,14 +444,14 @@ func (mbox *Mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 }
 
 func (mbox *Mailbox) Expunge() error {
-	mails, err := mbox.backend.Storage.MailList(mbox.name, nil)
+	mails, err := mbox.backend.Storage.MailListMetadata(mbox.name, nil)
 	if err != nil {
 		return err
 	}
 	var seqNums []uint32
-	for i, mail := range mails {
+	for _, mail := range mails {
 		if mail.Deleted {
-			seqNums = append(seqNums, uint32(i+1))
+			seqNums = append(seqNums, uint32(mail.Seq))
 		}
 	}
 	if err := mbox.backend.Storage.MailExpunge(mbox.name); err != nil {
@@ -459,22 +472,18 @@ func (mbox *Mailbox) MoveMessages(uid bool, seqset *imap.SeqSet, dest string) er
 		return fmt.Errorf("can't copy into Outbox as it is a protected folder")
 	}
 
-	ids, err := mbox.getIDsFromSeqSet(uid, seqset)
+	mails, err := mbox.getMailsFromSeqSet(uid, seqset)
 	if err != nil {
-		return fmt.Errorf("mbox.getIDsFromSeqSet: %w", err)
+		return fmt.Errorf("mbox.getMailsFromSeqSet: %w", err)
 	}
 
 	type messageRef struct {
 		id  int
 		seq int
 	}
-	refs := make([]messageRef, 0, len(ids))
-	for _, id := range ids {
-		seq, _, err := mbox.backend.Storage.MailSelect(mbox.name, id)
-		if err != nil {
-			return err
-		}
-		refs = append(refs, messageRef{id: id, seq: seq})
+	refs := make([]messageRef, 0, len(mails))
+	for _, mail := range mails {
+		refs = append(refs, messageRef{id: mail.ID, seq: mail.Seq})
 	}
 	sort.Slice(refs, func(i, j int) bool {
 		return refs[i].seq > refs[j].seq

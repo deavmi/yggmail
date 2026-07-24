@@ -30,9 +30,12 @@ type Storage interface {
 	MailCreate(mailbox string, data []byte) (int, error)
 	MailCopy(mailbox string, id int, destination string) error
 	MailList(mailbox string, seen *bool) ([]*types.Mail, error)
+	MailListMetadata(mailbox string, seen *bool) ([]*types.Mail, error)
+	MailData(mailbox string, id int) ([]byte, error)
 	MailSelect(mailbox string, id int) (int, *types.Mail, error)
 	MailSearch(mailbox string) ([]uint32, error)
 	MailUpdateFlags(mailbox string, id int, seen, answered, flagged, deleted bool) error
+	MailUpdateFlagsBulk(mailbox string, updates []types.MailFlagsUpdate) error
 	MailDelete(mailbox string, id int) error
 	MailExpunge(mailbox string) error
 	MailCount(mailbox string) (int, error)

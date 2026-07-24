@@ -13,8 +13,18 @@ import "time"
 type Mail struct {
 	Mailbox  string
 	ID       int
+	Seq      int
+	Size     uint32
 	Mail     []byte
 	Date     time.Time
+	Seen     bool
+	Answered bool
+	Flagged  bool
+	Deleted  bool
+}
+
+type MailFlagsUpdate struct {
+	ID       int
 	Seen     bool
 	Answered bool
 	Flagged  bool

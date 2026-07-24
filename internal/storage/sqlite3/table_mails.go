@@ -21,6 +21,9 @@ type TableMails struct {
 	writer           *Writer
 	selectMails      *sql.Stmt
 	selectMailsSeen  *sql.Stmt
+	selectMailsMeta  *sql.Stmt
+	selectSeenMeta   *sql.Stmt
+	selectMailData   *sql.Stmt
 	selectMail       *sql.Stmt
 	selectIDForSeq   *sql.Stmt
 	searchMail       *sql.Stmt
@@ -65,6 +68,22 @@ const selectMailsSeenStmt = `
 	SELECT id, mail, datetime, seen, answered, flagged, deleted FROM mails
 	WHERE mailbox = $1 AND seen = $2
 	ORDER BY id
+`
+
+const selectMailsMetadataStmt = `
+	SELECT id, datetime, LENGTH(mail), seen, answered, flagged, deleted FROM mails
+	WHERE mailbox = $1
+	ORDER BY id
+`
+
+const selectMailsSeenMetadataStmt = `
+	SELECT id, datetime, LENGTH(mail), seen, answered, flagged, deleted FROM mails
+	WHERE mailbox = $1 AND seen = $2
+	ORDER BY id
+`
+
+const selectMailDataStmt = `
+	SELECT mail FROM mails WHERE mailbox = $1 AND id = $2
 `
 
 const selectMailStmt = `
@@ -124,6 +143,18 @@ func NewTableMails(db *sql.DB, writer *Writer) (*TableMails, error) {
 	t.selectMailsSeen, err = db.Prepare(selectMailsSeenStmt)
 	if err != nil {
 		return nil, fmt.Errorf("db.Prepare(selectMailsSeenStmt): %w", err)
+	}
+	t.selectMailsMeta, err = db.Prepare(selectMailsMetadataStmt)
+	if err != nil {
+		return nil, fmt.Errorf("db.Prepare(selectMailsMetadataStmt): %w", err)
+	}
+	t.selectSeenMeta, err = db.Prepare(selectMailsSeenMetadataStmt)
+	if err != nil {
+		return nil, fmt.Errorf("db.Prepare(selectMailsSeenMetadataStmt): %w", err)
+	}
+	t.selectMailData, err = db.Prepare(selectMailDataStmt)
+	if err != nil {
+		return nil, fmt.Errorf("db.Prepare(selectMailDataStmt): %w", err)
 	}
 	t.selectMail, err = db.Prepare(selectMailStmt)
 	if err != nil {
@@ -208,6 +239,47 @@ func (t *TableMails) MailList(mailbox string, seen *bool) ([]*types.Mail, error)
 	return mails, nil
 }
 
+func (t *TableMails) MailListMetadata(mailbox string, seen *bool) ([]*types.Mail, error) {
+	stmt := t.selectMailsMeta
+	args := []any{mailbox}
+	if seen != nil {
+		stmt = t.selectSeenMeta
+		args = append(args, *seen)
+	}
+	rows, err := stmt.Query(args...)
+	if err != nil {
+		return nil, fmt.Errorf("metadata query: %w", err)
+	}
+	defer rows.Close() // nolint:errcheck
+
+	var mails []*types.Mail
+	for rows.Next() {
+		var datetime int64
+		mail := &types.Mail{
+			Mailbox: mailbox,
+			Seq:     len(mails) + 1,
+		}
+		if err := rows.Scan(
+			&mail.ID, &datetime, &mail.Size, &mail.Seen,
+			&mail.Answered, &mail.Flagged, &mail.Deleted,
+		); err != nil {
+			return nil, fmt.Errorf("metadata scan: %w", err)
+		}
+		mail.Date = time.Unix(datetime, 0)
+		mails = append(mails, mail)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("metadata rows: %w", err)
+	}
+	return mails, nil
+}
+
+func (t *TableMails) MailData(mailbox string, id int) ([]byte, error) {
+	var data []byte
+	err := t.selectMailData.QueryRow(mailbox, id).Scan(&data)
+	return data, err
+}
+
 func (t *TableMails) MailSelect(mailbox string, id int) (int, *types.Mail, error) {
 	var seq int
 	var datetime int64
@@ -274,6 +346,21 @@ func (t *TableMails) MailUpdateFlags(mailbox string, id int, seen, answered, fla
 		_, err := txn.Stmt(t.updateMailFlags).
 			Exec(seen, answered, flagged, deleted, mailbox, id)
 		return err
+	})
+}
+
+func (t *TableMails) MailUpdateFlagsBulk(mailbox string, updates []types.MailFlagsUpdate) error {
+	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
+		stmt := txn.Stmt(t.updateMailFlags)
+		for _, update := range updates {
+			if _, err := stmt.Exec(
+				update.Seen, update.Answered, update.Flagged, update.Deleted,
+				mailbox, update.ID,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

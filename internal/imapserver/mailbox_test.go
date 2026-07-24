@@ -188,36 +188,36 @@ func TestSequenceSetsSkipMissingUIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := mailbox.getIDsFromSeqSet(true, uidSet)
+	mails, err := mailbox.getMailsFromSeqSet(true, uidSet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(ids, []int{3}) {
-		t.Fatalf("UID range resolved to %v, want [3]", ids)
+	if len(mails) != 1 || mails[0].ID != 3 {
+		t.Fatalf("UID range resolved to %+v, want UID 3", mails)
 	}
 
 	missingSet, err := imap.ParseSeqSet("50:1000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err = mailbox.getIDsFromSeqSet(true, missingSet)
+	mails, err = mailbox.getMailsFromSeqSet(true, missingSet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ids) != 0 {
-		t.Fatalf("missing UID range resolved to %v, want none", ids)
+	if len(mails) != 0 {
+		t.Fatalf("missing UID range resolved to %+v, want none", mails)
 	}
 
 	seqSet, err := imap.ParseSeqSet("2:1000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err = mailbox.getIDsFromSeqSet(false, seqSet)
+	mails, err = mailbox.getMailsFromSeqSet(false, seqSet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(ids, []int{3}) {
-		t.Fatalf("sequence range resolved to message IDs %v, want [3]", ids)
+	if len(mails) != 1 || mails[0].ID != 3 {
+		t.Fatalf("sequence range resolved to %+v, want message ID 3", mails)
 	}
 }
 
