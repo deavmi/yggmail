@@ -412,6 +412,7 @@ func applyMailFlags(mail *types.Mail, flags []string) {
 }
 
 func (mbox *Mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string) error {
+	destName = canonicalMailboxName(destName)
 	if destName == "Outbox" {
 		return fmt.Errorf("can't copy into Outbox as it is a protected folder")
 	}
@@ -453,6 +454,7 @@ func (mbox *Mailbox) Expunge() error {
 }
 
 func (mbox *Mailbox) MoveMessages(uid bool, seqset *imap.SeqSet, dest string) error {
+	dest = canonicalMailboxName(dest)
 	if dest == "Outbox" {
 		return fmt.Errorf("can't copy into Outbox as it is a protected folder")
 	}

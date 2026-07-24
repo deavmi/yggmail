@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/backend"
@@ -22,7 +23,14 @@ type User struct {
 	backend  *Backend
 	username string
 	conn     *imap.ConnInfo
-	log			 *log.Logger
+	log      *log.Logger
+}
+
+func canonicalMailboxName(name string) string {
+	if strings.EqualFold(name, "INBOX") {
+		return "INBOX"
+	}
+	return name
 }
 
 func (u *User) Username() string {
@@ -54,6 +62,7 @@ func (u *User) GetMailbox(name string) (mailbox backend.Mailbox, err error) {
 			name:    "",
 		}, nil
 	}
+	name = canonicalMailboxName(name)
 	ok, _ := u.backend.Storage.MailboxSelect(name)
 	if !ok {
 		return nil, fmt.Errorf("mailbox %q not found", name)
@@ -66,33 +75,36 @@ func (u *User) GetMailbox(name string) (mailbox backend.Mailbox, err error) {
 }
 
 func (u *User) CreateMailbox(name string) error {
+	name = canonicalMailboxName(name)
 	u.log.Printf("Creating mailbox '%s'...\n", name)
-	
-	if e := u.backend.Storage.MailboxCreate(name); e != nil {
-		u.log.Printf("Error creating mailbox '%s': %v\n", name, e);
-		return e;
+
+	if err := u.backend.Storage.MailboxCreate(name); err != nil {
+		u.log.Printf("Error creating mailbox '%s': %v\n", name, err)
+		return err
 	}
-	
-	u.log.Printf("Created mailbox '%s'\n", name);
-	return nil;
+
+	u.log.Printf("Created mailbox '%s'\n", name)
+	return nil
 }
 
 func (u *User) DeleteMailbox(name string) error {
+	name = canonicalMailboxName(name)
 	switch name {
 	case "INBOX", "Outbox", "Sent":
 		return errors.New("Cannot delete " + name)
 	default:
-		if e := u.backend.Storage.MailboxDelete(name); e != nil {
-			 u.log.Printf("Error deleting mailbox '%s': %v\n", name, e)	
-			 return e;
-		} else {
-			u.log.Printf("Deleted mailbox '%s'\n", name)
-			return e;
+		if err := u.backend.Storage.MailboxDelete(name); err != nil {
+			u.log.Printf("Error deleting mailbox '%s': %v\n", name, err)
+			return err
 		}
+		u.log.Printf("Deleted mailbox '%s'\n", name)
+		return nil
 	}
 }
 
 func (u *User) RenameMailbox(existingName, newName string) error {
+	existingName = canonicalMailboxName(existingName)
+	newName = canonicalMailboxName(newName)
 	switch existingName {
 	case "INBOX", "Outbox", "Sent":
 		return errors.New("Cannot rename " + existingName)
