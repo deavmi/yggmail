@@ -213,3 +213,51 @@ func TestCopyPreservesFlagsWithoutChangingSourceMailbox(t *testing.T) {
 		t.Fatalf("copied mail = %+v", copied)
 	}
 }
+
+func TestUpdateFlagsSupportsSetAddRemoveAndExpunge(t *testing.T) {
+	mailbox, store := testMailbox(t)
+	id, err := store.MailCreate("INBOX", []byte("mail"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uint32(id))
+
+	if err := mailbox.UpdateMessagesFlags(
+		true, seqSet, imap.SetFlags, []string{imap.SeenFlag, imap.DeletedFlag},
+	); err != nil {
+		t.Fatal(err)
+	}
+	_, mail, err := store.MailSelect("INBOX", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mail.Seen || !mail.Deleted {
+		t.Fatalf("flags after set = %+v", mail)
+	}
+
+	if err := mailbox.UpdateMessagesFlags(
+		true, seqSet, imap.AddFlags, []string{imap.FlaggedFlag},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := mailbox.UpdateMessagesFlags(
+		true, seqSet, imap.RemoveFlags, []string{imap.SeenFlag},
+	); err != nil {
+		t.Fatal(err)
+	}
+	_, mail, err = store.MailSelect("INBOX", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mail.Seen || !mail.Flagged || !mail.Deleted {
+		t.Fatalf("flags after add/remove = %+v", mail)
+	}
+
+	if err := mailbox.Expunge(); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := store.MailCount("INBOX"); err != nil || count != 0 {
+		t.Fatalf("mail count = %d, err = %v", count, err)
+	}
+}

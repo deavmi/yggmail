@@ -322,23 +322,12 @@ func (mbox *Mailbox) CreateMessage(flags []string, date time.Time, body imap.Lit
 	if err != nil {
 		return fmt.Errorf("mbox.backend.Storage.MailCreate: %w", err)
 	}
-	for _, flag := range flags {
-		var seen, answered, flagged, deleted bool
-		switch flag {
-		case "\\Seen":
-			seen = true
-		case "\\Answered":
-			answered = true
-		case "\\Flagged":
-			flagged = true
-		case "\\Deleted":
-			deleted = true
-		}
-		if err := mbox.backend.Storage.MailUpdateFlags(
-			mbox.name, id, seen, answered, flagged, deleted,
-		); err != nil {
-			return err
-		}
+	mail := &types.Mail{ID: id}
+	applyMailFlags(mail, flags)
+	if err := mbox.backend.Storage.MailUpdateFlags(
+		mbox.name, id, mail.Seen, mail.Answered, mail.Flagged, mail.Deleted,
+	); err != nil {
+		return err
 	}
 	return nil
 }
@@ -350,26 +339,12 @@ func (mbox *Mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 	}
 
 	for _, id := range ids {
-		var mail *types.Mail
-		if op != imap.SetFlags {
-			var err error
-			_, mail, err = mbox.backend.Storage.MailSelect(mbox.name, int(id))
-			if err != nil {
-				return fmt.Errorf("mbox.backend.Storage.MailSelect: %w", err)
-			}
+		_, mail, err := mbox.backend.Storage.MailSelect(mbox.name, int(id))
+		if err != nil {
+			return fmt.Errorf("mbox.backend.Storage.MailSelect: %w", err)
 		}
-		for _, flag := range flags {
-			switch flag {
-			case "\\Seen":
-				mail.Seen = op != imap.RemoveFlags
-			case "\\Answered":
-				mail.Answered = op != imap.RemoveFlags
-			case "\\Flagged":
-				mail.Flagged = op != imap.RemoveFlags
-			case "\\Deleted":
-				mail.Deleted = op != imap.RemoveFlags
-			}
-		}
+		updated := backendutil.UpdateFlags(mailFlags(mail), op, flags)
+		applyMailFlags(mail, updated)
 
 		if err := mbox.backend.Storage.MailUpdateFlags(
 			mbox.name, int(mail.ID), mail.Seen,
@@ -379,6 +354,42 @@ func (mbox *Mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 		}
 	}
 	return nil
+}
+
+func mailFlags(mail *types.Mail) []string {
+	var flags []string
+	if mail.Seen {
+		flags = append(flags, imap.SeenFlag)
+	}
+	if mail.Answered {
+		flags = append(flags, imap.AnsweredFlag)
+	}
+	if mail.Flagged {
+		flags = append(flags, imap.FlaggedFlag)
+	}
+	if mail.Deleted {
+		flags = append(flags, imap.DeletedFlag)
+	}
+	return flags
+}
+
+func applyMailFlags(mail *types.Mail, flags []string) {
+	mail.Seen = false
+	mail.Answered = false
+	mail.Flagged = false
+	mail.Deleted = false
+	for _, flag := range flags {
+		switch flag {
+		case imap.SeenFlag:
+			mail.Seen = true
+		case imap.AnsweredFlag:
+			mail.Answered = true
+		case imap.FlaggedFlag:
+			mail.Flagged = true
+		case imap.DeletedFlag:
+			mail.Deleted = true
+		}
+	}
 }
 
 func (mbox *Mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string) error {
