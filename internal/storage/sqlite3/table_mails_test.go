@@ -123,3 +123,74 @@ func TestMailListUsesUIDOrder(t *testing.T) {
 		t.Fatalf("mail IDs = %v, want [1 3]", ids)
 	}
 }
+
+func TestQueueMarkDeliveredMovesToNextSentID(t *testing.T) {
+	store, err := NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	for _, mailbox := range []string{"Outbox", "Sent"} {
+		if err := store.MailboxCreate(mailbox); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.MailCreate("Sent", []byte("existing")); err != nil {
+		t.Fatal(err)
+	}
+	outboxID, err := store.MailCreate("Outbox", []byte("outgoing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MailUpdateFlags("Outbox", outboxID, true, true, true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.QueueInsertDestinationForID("peer", outboxID, "from", "to"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.QueueMarkDelivered("peer", outboxID); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := store.MailCount("Outbox"); err != nil || count != 0 {
+		t.Fatalf("Outbox count = %d, err = %v", count, err)
+	}
+	_, sent, err := store.MailSelect("Sent", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(sent.Mail) != "outgoing" || !sent.Seen || !sent.Answered || !sent.Flagged {
+		t.Fatalf("moved mail = %+v", sent)
+	}
+	if pending, err := store.QueueSelectIsMessagePendingSend("Outbox", outboxID); err != nil || pending {
+		t.Fatalf("pending = %v, err = %v", pending, err)
+	}
+}
+
+func TestQueueMarkDeliveredRollsBackMissingSentMailbox(t *testing.T) {
+	store, err := NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	if err := store.MailboxCreate("Outbox"); err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.MailCreate("Outbox", []byte("outgoing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.QueueInsertDestinationForID("peer", id, "from", "to"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.QueueMarkDelivered("peer", id); err == nil {
+		t.Fatal("QueueMarkDelivered succeeded without Sent mailbox")
+	}
+	if pending, err := store.QueueSelectIsMessagePendingSend("Outbox", id); err != nil || !pending {
+		t.Fatalf("pending = %v, err = %v", pending, err)
+	}
+	if _, _, err := store.MailSelect("Outbox", id); err != nil {
+		t.Fatalf("Outbox mail was lost: %v", err)
+	}
+}

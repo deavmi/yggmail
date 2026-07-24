@@ -10,6 +10,7 @@ package sqlite3
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -59,6 +60,37 @@ func (s *SQLite3Storage) Close() error {
 	return s.db.Close()
 }
 
+func (s *SQLite3Storage) QueueMarkDelivered(destination string, id int) error {
+	return s.writer.Do(s.db, nil, func(txn *sql.Tx) error {
+		result, err := txn.Exec(
+			"DELETE FROM queue WHERE destination = $1 AND mailbox = 'Outbox' AND id = $2",
+			destination, id,
+		)
+		if err != nil {
+			return fmt.Errorf("delete queue destination: %w", err)
+		}
+		deleted, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("deleted queue rows: %w", err)
+		}
+		if deleted == 0 {
+			return errors.New("queue destination not found")
+		}
+
+		var remaining int
+		if err := txn.QueryRow(
+			"SELECT COUNT(*) FROM queue WHERE mailbox = 'Outbox' AND id = $1",
+			id,
+		).Scan(&remaining); err != nil {
+			return fmt.Errorf("count remaining queue destinations: %w", err)
+		}
+		if remaining > 0 {
+			return nil
+		}
+		return moveMailTx(txn, "Outbox", id, "Sent")
+	})
+}
+
 type Writer struct {
 	running atomic.Bool
 	todo    chan writerTask
@@ -97,6 +129,7 @@ func (w *Writer) run() {
 			func() {
 				txn, err := task.db.Begin()
 				if err != nil {
+					task.wait <- err
 					return
 				}
 				err = task.f(txn)

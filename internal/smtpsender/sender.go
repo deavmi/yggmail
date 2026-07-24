@@ -170,15 +170,8 @@ func (q *Queue) run() {
 				return fmt.Errorf("writer.Write: %w", err)
 			}
 
-			if err := q.queues.Storage.QueueDeleteDestinationForID(q.destination, ref.ID); err != nil {
-				return fmt.Errorf("q.queues.Storage.QueueDeleteDestinationForID: %w", err)
-			}
-
-			if remaining, err := q.queues.Storage.QueueSelectIsMessagePendingSend("Outbox", ref.ID); err != nil {
-				return fmt.Errorf("q.queues.Storage.QueueSelectIsMessagePendingSend: %w", err)
-			} else if !remaining {
-				q.queues.Log.Printf("Moving mail with id '%d' from Outbox to Sent\n", ref.ID)
-				return q.queues.Storage.MailMove("Outbox", ref.ID, "Sent")
+			if err := q.queues.Storage.QueueMarkDelivered(q.destination, ref.ID); err != nil {
+				return fmt.Errorf("q.queues.Storage.QueueMarkDelivered: %w", err)
 			}
 
 			return nil

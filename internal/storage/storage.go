@@ -41,4 +41,5 @@ type Storage interface {
 	QueueInsertDestinationForID(destination string, id int, from, rcpt string) error
 	QueueDeleteDestinationForID(destination string, id int) error
 	QueueSelectIsMessagePendingSend(mailbox string, id int) (bool, error)
+	QueueMarkDelivered(destination string, id int) error
 }
