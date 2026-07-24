@@ -170,6 +170,57 @@ func TestSearchMessagesFiltersUIDAndUnseen(t *testing.T) {
 	}
 }
 
+func TestSequenceSetsSkipMissingUIDs(t *testing.T) {
+	mailbox, store := testMailbox(t)
+	for range 3 {
+		if _, err := store.MailCreate("INBOX", []byte("mail")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.MailDelete("INBOX", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MailExpunge("INBOX"); err != nil {
+		t.Fatal(err)
+	}
+
+	uidSet, err := imap.ParseSeqSet("2:1000000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := mailbox.getIDsFromSeqSet(true, uidSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(ids, []int{3}) {
+		t.Fatalf("UID range resolved to %v, want [3]", ids)
+	}
+
+	missingSet, err := imap.ParseSeqSet("50:1000000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err = mailbox.getIDsFromSeqSet(true, missingSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("missing UID range resolved to %v, want none", ids)
+	}
+
+	seqSet, err := imap.ParseSeqSet("2:1000000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err = mailbox.getIDsFromSeqSet(false, seqSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(ids, []int{3}) {
+		t.Fatalf("sequence range resolved to message IDs %v, want [3]", ids)
+	}
+}
+
 func TestListMessagesFetchesBody(t *testing.T) {
 	mailbox, store := testMailbox(t)
 	if _, err := store.MailCreate("INBOX", []byte("Subject: test\r\n\r\nbody")); err != nil {

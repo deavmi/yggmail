@@ -29,37 +29,26 @@ type Mailbox struct {
 	user    *User
 }
 
-func (mbox *Mailbox) getIDsFromSeqSet(uid bool, seqSet *imap.SeqSet) ([]int32, error) {
-	var ids []int32
-	for _, set := range seqSet.Set {
-		if set.Stop == 0 {
-			if uid {
-				mails, err := mbox.backend.Storage.MailList(mbox.name, nil)
-				if err != nil {
-					return nil, fmt.Errorf("mbox.backend.Storage.MailList: %w", err)
-				}
-				if len(mails) == 0 {
-					continue
-				}
-				set.Stop = uint32(mails[len(mails)-1].ID)
-			} else {
-				count, err := mbox.backend.Storage.MailCount(mbox.name)
-				if err != nil {
-					return nil, fmt.Errorf("mbox.backend.Storage.MailCount: %w", err)
-				}
-				set.Stop = uint32(count)
-			}
+func (mbox *Mailbox) getIDsFromSeqSet(uid bool, seqSet *imap.SeqSet) ([]int, error) {
+	mails, err := mbox.backend.Storage.MailList(mbox.name, nil)
+	if err != nil {
+		return nil, fmt.Errorf("mbox.backend.Storage.MailList: %w", err)
+	}
+
+	var maxUID uint32
+	if len(mails) > 0 {
+		maxUID = uint32(mails[len(mails)-1].ID)
+	}
+	maxSeq := uint32(len(mails))
+
+	ids := make([]int, 0, len(mails))
+	for i, mail := range mails {
+		number, maximum := uint32(i+1), maxSeq
+		if uid {
+			number, maximum = uint32(mail.ID), maxUID
 		}
-		for i := set.Start; i <= set.Stop; i++ {
-			if !uid {
-				pid, err := mbox.backend.Storage.MailIDForSeq(mbox.name, int(i))
-				if err != nil {
-					return nil, fmt.Errorf("mbox.backend.Storage.MailIDForSeq: %w", err)
-				}
-				ids = append(ids, int32(pid))
-			} else {
-				ids = append(ids, int32(i))
-			}
+		if seqSetContains(seqSet, number, maximum) {
+			ids = append(ids, mail.ID)
 		}
 	}
 	return ids, nil
@@ -361,7 +350,7 @@ func (mbox *Mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 	}
 
 	for _, id := range ids {
-		seq, mail, err := mbox.backend.Storage.MailSelect(mbox.name, int(id))
+		seq, mail, err := mbox.backend.Storage.MailSelect(mbox.name, id)
 		if err != nil {
 			return fmt.Errorf("mbox.backend.Storage.MailSelect: %w", err)
 		}
@@ -369,7 +358,7 @@ func (mbox *Mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 		applyMailFlags(mail, updated)
 
 		if err := mbox.backend.Storage.MailUpdateFlags(
-			mbox.name, int(mail.ID), mail.Seen,
+			mbox.name, mail.ID, mail.Seen,
 			mail.Answered, mail.Flagged, mail.Deleted,
 		); err != nil {
 			return err
@@ -433,7 +422,7 @@ func (mbox *Mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 	}
 
 	for _, id := range ids {
-		if err := mbox.backend.Storage.MailCopy(mbox.name, int(id), destName); err != nil {
+		if err := mbox.backend.Storage.MailCopy(mbox.name, id, destName); err != nil {
 			return fmt.Errorf("mbox.backend.Storage.MailCopy: %w", err)
 		}
 	}
@@ -474,12 +463,12 @@ func (mbox *Mailbox) MoveMessages(uid bool, seqset *imap.SeqSet, dest string) er
 	}
 
 	type messageRef struct {
-		id  int32
+		id  int
 		seq int
 	}
 	refs := make([]messageRef, 0, len(ids))
 	for _, id := range ids {
-		seq, _, err := mbox.backend.Storage.MailSelect(mbox.name, int(id))
+		seq, _, err := mbox.backend.Storage.MailSelect(mbox.name, id)
 		if err != nil {
 			return err
 		}
@@ -489,7 +478,7 @@ func (mbox *Mailbox) MoveMessages(uid bool, seqset *imap.SeqSet, dest string) er
 		return refs[i].seq > refs[j].seq
 	})
 	for _, ref := range refs {
-		if err := mbox.backend.Storage.MailMove(mbox.name, int(ref.id), dest); err != nil {
+		if err := mbox.backend.Storage.MailMove(mbox.name, ref.id, dest); err != nil {
 			return err
 		}
 		mbox.backend.sendUpdate(&backend.ExpungeUpdate{
