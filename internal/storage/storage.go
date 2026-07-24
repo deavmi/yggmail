@@ -18,6 +18,7 @@ type Storage interface {
 
 	MailboxSelect(mailbox string) (bool, error)
 	MailNextID(mailbox string) (int, error)
+	MailUIDValidity(mailbox string) (uint32, error)
 	MailIDForSeq(mailbox string, id int) (int, error)
 	MailUnseen(mailbox string) (int, error)
 	MailboxList(onlySubscribed bool) ([]string, error)

@@ -31,11 +31,22 @@ func (mbox *Mailbox) getIDsFromSeqSet(uid bool, seqSet *imap.SeqSet) ([]int32, e
 	var ids []int32
 	for _, set := range seqSet.Set {
 		if set.Stop == 0 {
-			next, err := mbox.backend.Storage.MailNextID(mbox.name)
-			if err != nil {
-				return nil, fmt.Errorf("mbox.backend.Storage.MailNextID: %w", err)
+			if uid {
+				mails, err := mbox.backend.Storage.MailList(mbox.name, nil)
+				if err != nil {
+					return nil, fmt.Errorf("mbox.backend.Storage.MailList: %w", err)
+				}
+				if len(mails) == 0 {
+					continue
+				}
+				set.Stop = uint32(mails[len(mails)-1].ID)
+			} else {
+				count, err := mbox.backend.Storage.MailCount(mbox.name)
+				if err != nil {
+					return nil, fmt.Errorf("mbox.backend.Storage.MailCount: %w", err)
+				}
+				set.Stop = uint32(count)
 			}
-			set.Stop = uint32(next - 1)
 		}
 		for i := set.Start; i <= set.Stop; i++ {
 			if !uid {
@@ -89,7 +100,11 @@ func (mbox *Mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error
 			status.UidNext = uint32(id)
 
 		case imap.StatusUidValidity:
-			status.UidValidity = 1
+			validity, err := mbox.backend.Storage.MailUIDValidity(mbox.name)
+			if err != nil {
+				return nil, fmt.Errorf("mbox.backend.Storage.MailUIDValidity: %w", err)
+			}
+			status.UidValidity = validity
 
 		case imap.StatusRecent:
 			status.Recent = 0 // TODO
@@ -235,11 +250,10 @@ func (mbox *Mailbox) SearchMessages(uid bool, criteria *imap.SearchCriteria) ([]
 	}
 
 	maxSeq := uint32(len(mails))
-	nextUID, err := mbox.backend.Storage.MailNextID(mbox.name)
-	if err != nil {
-		return nil, fmt.Errorf("mbox.backend.Storage.MailNextID: %w", err)
+	var maxUID uint32
+	if len(mails) > 0 {
+		maxUID = uint32(mails[len(mails)-1].ID)
 	}
-	maxUID := uint32(nextUID - 1)
 	var ids []uint32
 	for i, mail := range mails {
 		seqNum := uint32(i + 1)

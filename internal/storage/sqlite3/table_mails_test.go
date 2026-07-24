@@ -305,3 +305,119 @@ func TestQueueCreateCommitsMixedLocalAndRemoteDelivery(t *testing.T) {
 		t.Fatalf("queued refs = %+v", refs)
 	}
 }
+
+func TestMailboxUIDsAreNeverReused(t *testing.T) {
+	filename := t.TempDir() + "/mail.db"
+	store, err := NewSQLite3StorageStorage(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MailboxCreate("INBOX"); err != nil {
+		t.Fatal(err)
+	}
+	firstValidity, err := store.MailUIDValidity("INBOX")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for want := 1; want <= 2; want++ {
+		id, err := store.MailCreate("INBOX", []byte("mail"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id != want {
+			t.Fatalf("created UID = %d, want %d", id, want)
+		}
+	}
+	if err := store.MailDelete("INBOX", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MailExpunge("INBOX"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = NewSQLite3StorageStorage(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	if next, err := store.MailNextID("INBOX"); err != nil || next != 3 {
+		t.Fatalf("UIDNEXT = %d, err = %v, want 3", next, err)
+	}
+	if id, err := store.MailCreate("INBOX", []byte("replacement")); err != nil || id != 3 {
+		t.Fatalf("created UID = %d, err = %v, want 3", id, err)
+	}
+	if validity, err := store.MailUIDValidity("INBOX"); err != nil || validity != firstValidity {
+		t.Fatalf("UIDVALIDITY = %d, err = %v, want %d", validity, err, firstValidity)
+	}
+}
+
+func TestMailboxUIDStateFollowsRenameAndChangesOnRecreate(t *testing.T) {
+	store, err := NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	if err := store.MailboxCreate("Archive"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MailCreate("Archive", []byte("mail")); err != nil {
+		t.Fatal(err)
+	}
+	originalValidity, err := store.MailUIDValidity("Archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MailboxRename("Archive", "Filed"); err != nil {
+		t.Fatal(err)
+	}
+	if next, err := store.MailNextID("Filed"); err != nil || next != 2 {
+		t.Fatalf("renamed UIDNEXT = %d, err = %v, want 2", next, err)
+	}
+	if validity, err := store.MailUIDValidity("Filed"); err != nil || validity != originalValidity {
+		t.Fatalf("renamed UIDVALIDITY = %d, err = %v, want %d", validity, err, originalValidity)
+	}
+	if err := store.MailboxDelete("Filed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MailboxCreate("Filed"); err != nil {
+		t.Fatal(err)
+	}
+	if validity, err := store.MailUIDValidity("Filed"); err != nil || validity <= originalValidity {
+		t.Fatalf("recreated UIDVALIDITY = %d, err = %v, want > %d", validity, err, originalValidity)
+	}
+}
+
+func TestLegacyMailboxGetsPersistentUIDState(t *testing.T) {
+	store, err := NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	if err := store.MailboxCreate("INBOX"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(
+		"DELETE FROM mailbox_uids WHERE mailbox = 'INBOX'",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`
+		INSERT INTO mails (mailbox, id, mail, datetime)
+		VALUES ('INBOX', 7, X'00', 0)
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	if next, err := store.MailNextID("INBOX"); err != nil || next != 8 {
+		t.Fatalf("legacy UIDNEXT = %d, err = %v, want 8", next, err)
+	}
+	validity, err := store.MailUIDValidity("INBOX")
+	if err != nil || validity <= 1 {
+		t.Fatalf("legacy UIDVALIDITY = %d, err = %v", validity, err)
+	}
+	if id, err := store.MailCreate("INBOX", []byte("new")); err != nil || id != 8 {
+		t.Fatalf("legacy next created UID = %d, err = %v, want 8", id, err)
+	}
+}

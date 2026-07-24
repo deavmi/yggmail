@@ -22,10 +22,8 @@ type TableMails struct {
 	selectMails      *sql.Stmt
 	selectMailsSeen  *sql.Stmt
 	selectMail       *sql.Stmt
-	selectMailNextID *sql.Stmt
 	selectIDForSeq   *sql.Stmt
 	searchMail       *sql.Stmt
-	createMail       *sql.Stmt
 	countMails       *sql.Stmt
 	countUnseenMails *sql.Stmt
 	updateMailFlags  *sql.Stmt
@@ -89,24 +87,9 @@ const searchMailStmt = `
 	ORDER BY mailbox, id
 `
 
-const insertMailStmt = `
-	INSERT INTO mails (mailbox, id, mail, datetime) VALUES(
-		$1, (
-			SELECT IFNULL(MAX(id)+1,1) AS id FROM mails
-			WHERE mailbox = $1
-		), $2, $3
-	)
-	RETURNING id;
-`
-
 const selectIDForSeqStmt = `
 	SELECT id FROM inboxes
 	WHERE mailbox = $1 AND seq = $2
-`
-
-const selectMailNextID = `
-	SELECT IFNULL(MAX(id)+1,1) AS id FROM mails
-	WHERE mailbox = $1
 `
 
 const updateMailFlagsStmt = `
@@ -146,10 +129,6 @@ func NewTableMails(db *sql.DB, writer *Writer) (*TableMails, error) {
 	if err != nil {
 		return nil, fmt.Errorf("db.Prepare(selectMailStmt): %w", err)
 	}
-	t.selectMailNextID, err = db.Prepare(selectMailNextID)
-	if err != nil {
-		return nil, fmt.Errorf("db.Prepare(selectMailNextID): %w", err)
-	}
 	t.selectIDForSeq, err = db.Prepare(selectIDForSeqStmt)
 	if err != nil {
 		return nil, fmt.Errorf("db.Prepare(selectPIDForIDStmt): %w", err)
@@ -157,10 +136,6 @@ func NewTableMails(db *sql.DB, writer *Writer) (*TableMails, error) {
 	t.searchMail, err = db.Prepare(searchMailStmt)
 	if err != nil {
 		return nil, fmt.Errorf("db.Prepare(selectPIDForIDStmt): %w", err)
-	}
-	t.createMail, err = db.Prepare(insertMailStmt)
-	if err != nil {
-		return nil, fmt.Errorf("db.Prepare(insertMailStmt): %w", err)
 	}
 	t.updateMailFlags, err = db.Prepare(updateMailFlagsStmt)
 	if err != nil {
@@ -192,9 +167,9 @@ func NewTableMails(db *sql.DB, writer *Writer) (*TableMails, error) {
 func (t *TableMails) MailCreate(mailbox string, data []byte) (int, error) {
 	var id int
 	err := t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		return txn.Stmt(t.createMail).
-			QueryRow(mailbox, data, time.Now().Unix()).
-			Scan(&id)
+		var err error
+		id, err = createMailTx(txn, mailbox, data)
+		return err
 	})
 	return id, err
 }
@@ -263,9 +238,23 @@ func (t *TableMails) MailSearch(mailbox string) ([]uint32, error) {
 }
 
 func (t *TableMails) MailNextID(mailbox string) (int, error) {
-	var id int
-	err := t.selectMailNextID.QueryRow(mailbox).Scan(&id)
-	return id, err
+	var next int64
+	err := t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
+		var err error
+		next, _, err = ensureMailboxUIDStateTx(txn, mailbox)
+		return err
+	})
+	return int(next), err
+}
+
+func (t *TableMails) MailUIDValidity(mailbox string) (uint32, error) {
+	var validity uint32
+	err := t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
+		var err error
+		_, validity, err = ensureMailboxUIDStateTx(txn, mailbox)
+		return err
+	})
+	return validity, err
 }
 
 func (t *TableMails) MailIDForSeq(mailbox string, seq int) (int, error) {
@@ -339,11 +328,9 @@ func copyMailTx(txn *sql.Tx, mailbox string, id int, destination string) (int, e
 		return 0, fmt.Errorf("select source mail: %w", err)
 	}
 
-	var destinationID int
-	if err := txn.QueryRow(`
-		SELECT IFNULL(MAX(id)+1, 1) FROM mails WHERE mailbox = $1
-	`, destination).Scan(&destinationID); err != nil {
-		return 0, fmt.Errorf("select destination mail ID: %w", err)
+	destinationID, err := allocateMailboxUIDTx(txn, destination)
+	if err != nil {
+		return 0, fmt.Errorf("allocate destination mail ID: %w", err)
 	}
 	if _, err := txn.Exec(`
 		INSERT INTO mails (

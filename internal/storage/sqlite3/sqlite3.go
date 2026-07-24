@@ -51,6 +51,9 @@ func NewSQLite3StorageStorage(filename string) (*SQLite3Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewTableMails: %w", err)
 	}
+	if err = initializeMailboxUIDs(db); err != nil {
+		return nil, fmt.Errorf("initializeMailboxUIDs: %w", err)
+	}
 	s.TableQueue, err = NewTableQueue(db, s.writer)
 	if err != nil {
 		return nil, fmt.Errorf("NewTableQueue: %w", err)
@@ -99,17 +102,14 @@ func (s *SQLite3Storage) QueueCreate(
 }
 
 func createMailTx(txn *sql.Tx, mailbox string, content []byte) (int, error) {
-	var id int
-	if err := txn.QueryRow(`
+	id, err := allocateMailboxUIDTx(txn, mailbox)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := txn.Exec(`
 		INSERT INTO mails (mailbox, id, mail, datetime)
-		VALUES (
-			$1,
-			(SELECT IFNULL(MAX(id)+1, 1) FROM mails WHERE mailbox = $1),
-			$2,
-			$3
-		)
-		RETURNING id
-	`, mailbox, content, time.Now().Unix()).Scan(&id); err != nil {
+		VALUES ($1, $2, $3, $4)
+	`, mailbox, id, content, time.Now().Unix()); err != nil {
 		return 0, err
 	}
 	return id, nil

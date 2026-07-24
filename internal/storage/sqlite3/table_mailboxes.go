@@ -138,14 +138,25 @@ func (t *TableMailboxes) MailboxSelect(mailbox string) (bool, error) {
 
 func (t *TableMailboxes) MailboxCreate(name string) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := txn.Stmt(t.createMailbox).Exec(name)
+		result, err := txn.Stmt(t.createMailbox).Exec(name)
+		if err != nil {
+			return err
+		}
+		created, err := result.RowsAffected()
+		if err != nil || created == 0 {
+			return err
+		}
+		_, err = txn.Exec(
+			"INSERT INTO mailbox_uids (mailbox, uidnext) VALUES ($1, 1)",
+			name,
+		)
 		return err
 	})
 }
 
 func (t *TableMailboxes) MailboxRename(old, new string) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := txn.Stmt(t.renameMailbox).Exec(old, new)
+		_, err := txn.Stmt(t.renameMailbox).Exec(new, old)
 		return err
 	})
 }
