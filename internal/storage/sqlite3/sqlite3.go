@@ -12,8 +12,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/neilalexander/yggmail/internal/storage/types"
 	"go.uber.org/atomic"
 )
 
@@ -58,6 +60,59 @@ func NewSQLite3StorageStorage(filename string) (*SQLite3Storage, error) {
 
 func (s *SQLite3Storage) Close() error {
 	return s.db.Close()
+}
+
+func (s *SQLite3Storage) QueueCreate(
+	from string,
+	recipients []types.QueueRecipient,
+	localCopies int,
+	content []byte,
+) error {
+	return s.writer.Do(s.db, nil, func(txn *sql.Tx) error {
+		for range localCopies {
+			if _, err := createMailTx(txn, "INBOX", content); err != nil {
+				return fmt.Errorf("create local Inbox copy: %w", err)
+			}
+		}
+
+		if len(recipients) == 0 {
+			if _, err := createMailTx(txn, "Sent", content); err != nil {
+				return fmt.Errorf("create Sent copy: %w", err)
+			}
+			return nil
+		}
+
+		outboxID, err := createMailTx(txn, "Outbox", content)
+		if err != nil {
+			return fmt.Errorf("create Outbox mail: %w", err)
+		}
+		for _, recipient := range recipients {
+			if _, err := txn.Exec(`
+				INSERT INTO queue (destination, mailbox, id, mail, rcpt)
+				VALUES ($1, 'Outbox', $2, $3, $4)
+			`, recipient.Destination, outboxID, from, recipient.Address); err != nil {
+				return fmt.Errorf("create queue destination: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+func createMailTx(txn *sql.Tx, mailbox string, content []byte) (int, error) {
+	var id int
+	if err := txn.QueryRow(`
+		INSERT INTO mails (mailbox, id, mail, datetime)
+		VALUES (
+			$1,
+			(SELECT IFNULL(MAX(id)+1, 1) FROM mails WHERE mailbox = $1),
+			$2,
+			$3
+		)
+		RETURNING id
+	`, mailbox, content, time.Now().Unix()).Scan(&id); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 func (s *SQLite3Storage) QueueMarkDelivered(destination string, id int) error {
@@ -133,12 +188,12 @@ func (w *Writer) run() {
 					return
 				}
 				err = task.f(txn)
-				task.wait <- err
 				if err == nil {
-					_ = txn.Commit()
+					err = txn.Commit()
 				} else {
 					_ = txn.Rollback()
 				}
+				task.wait <- err
 			}()
 		} else {
 			task.wait <- task.f(nil)

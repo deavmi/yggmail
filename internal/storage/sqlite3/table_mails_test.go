@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/neilalexander/yggmail/internal/storage/types"
 )
 
 func TestMailsSeenIndexIsAddedToExistingSchema(t *testing.T) {
@@ -266,5 +268,40 @@ func TestMailCopyPreservesInternalDate(t *testing.T) {
 	}
 	if copied.Date.Unix() != 12345 {
 		t.Fatalf("copied internal date = %d, want 12345", copied.Date.Unix())
+	}
+}
+
+func TestQueueCreateCommitsMixedLocalAndRemoteDelivery(t *testing.T) {
+	store, err := NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	for _, mailbox := range []string{"INBOX", "Outbox", "Sent"} {
+		if err := store.MailboxCreate(mailbox); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err = store.QueueCreate(
+		"from",
+		[]types.QueueRecipient{{Destination: "peer", Address: "to"}},
+		1,
+		[]byte("mail"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for mailbox, want := range map[string]int{"INBOX": 1, "Outbox": 1, "Sent": 0} {
+		if count, err := store.MailCount(mailbox); err != nil || count != want {
+			t.Fatalf("%s count = %d, err = %v, want %d", mailbox, count, err, want)
+		}
+	}
+	refs, err := store.QueueMailIDsForDestination("peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].Mailbox != "Outbox" || refs[0].ID != 1 {
+		t.Fatalf("queued refs = %+v", refs)
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/emersion/go-smtp"
 	"github.com/neilalexander/yggmail/internal/config"
 	"github.com/neilalexander/yggmail/internal/storage"
+	"github.com/neilalexander/yggmail/internal/storage/types"
 	"github.com/neilalexander/yggmail/internal/transport"
 	"github.com/neilalexander/yggmail/internal/utils"
 	"go.uber.org/atomic"
@@ -57,13 +58,9 @@ func (qs *Queues) manager() {
 }
 
 func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
-	type remoteRecipient struct {
-		destination string
-		address     string
-	}
 	var (
 		localRecipients  int
-		remoteRecipients []remoteRecipient
+		remoteRecipients []types.QueueRecipient
 	)
 	for _, rcpt := range rcpts {
 		addr, err := mail.ParseAddress(rcpt)
@@ -79,36 +76,19 @@ func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
 			localRecipients++
 			continue
 		}
-		remoteRecipients = append(remoteRecipients, remoteRecipient{
-			destination: host,
-			address:     rcpt,
+		remoteRecipients = append(remoteRecipients, types.QueueRecipient{
+			Destination: host,
+			Address:     rcpt,
 		})
 	}
 
-	for range localRecipients {
-		if _, err := qs.Storage.MailCreate("INBOX", content); err != nil {
-			return fmt.Errorf("qs.Storage.MailCreate(INBOX): %w", err)
-		}
-	}
-	if len(remoteRecipients) == 0 {
-		if _, err := qs.Storage.MailCreate("Sent", content); err != nil {
-			return fmt.Errorf("qs.Storage.MailCreate(Sent): %w", err)
-		}
-		return nil
-	}
-
-	pid, err := qs.Storage.MailCreate("Outbox", content)
-	if err != nil {
-		return fmt.Errorf("qs.Storage.MailCreate(Outbox): %w", err)
+	if err := qs.Storage.QueueCreate(
+		from, remoteRecipients, localRecipients, content,
+	); err != nil {
+		return fmt.Errorf("qs.Storage.QueueCreate: %w", err)
 	}
 	for _, rcpt := range remoteRecipients {
-		if err := qs.Storage.QueueInsertDestinationForID(
-			rcpt.destination, pid, from, rcpt.address,
-		); err != nil {
-			return fmt.Errorf("qs.Storage.QueueInsertDestinationForID: %w", err)
-		}
-
-		_, _ = qs.queueFor(rcpt.destination)
+		_, _ = qs.queueFor(rcpt.Destination)
 	}
 
 	return nil

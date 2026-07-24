@@ -150,3 +150,70 @@ func TestSelfAddressedMailGoesToInboxAndSent(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueCreationRollsBackAllWrites(t *testing.T) {
+	store, err := sqlite3.NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	for _, mailbox := range []string{"INBOX", "Outbox", "Sent"} {
+		if err := store.MailboxCreate(mailbox); err != nil {
+			t.Fatal(err)
+		}
+	}
+	localKey := make(ed25519.PublicKey, ed25519.PublicKeySize)
+	remoteKey := make(ed25519.PublicKey, ed25519.PublicKeySize)
+	remoteKey[0] = 1
+	localAddress := hex.EncodeToString(localKey) + "@yggmail"
+	remoteAddress := hex.EncodeToString(remoteKey) + "@yggmail"
+	queues := &Queues{
+		Config:  &config.Config{PublicKey: localKey},
+		Log:     log.New(io.Discard, "", 0),
+		Storage: store,
+	}
+
+	err = queues.QueueFor(
+		localAddress,
+		[]string{localAddress, remoteAddress, remoteAddress},
+		[]byte("mail"),
+	)
+	if err == nil {
+		t.Fatal("QueueFor accepted duplicate queue destinations")
+	}
+	for _, mailbox := range []string{"INBOX", "Outbox", "Sent"} {
+		if count, countErr := store.MailCount(mailbox); countErr != nil || count != 0 {
+			t.Fatalf("%s count = %d, err = %v", mailbox, count, countErr)
+		}
+	}
+	if destinations, err := store.QueueListDestinations(); err != nil || len(destinations) != 0 {
+		t.Fatalf("queue destinations = %v, err = %v", destinations, err)
+	}
+}
+
+func TestInvalidRecipientCreatesNoMail(t *testing.T) {
+	store, err := sqlite3.NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	for _, mailbox := range []string{"INBOX", "Outbox", "Sent"} {
+		if err := store.MailboxCreate(mailbox); err != nil {
+			t.Fatal(err)
+		}
+	}
+	queues := &Queues{
+		Config:  &config.Config{PublicKey: make(ed25519.PublicKey, ed25519.PublicKeySize)},
+		Log:     log.New(io.Discard, "", 0),
+		Storage: store,
+	}
+
+	if err := queues.QueueFor("sender@yggmail", []string{"not-an-address"}, []byte("mail")); err == nil {
+		t.Fatal("QueueFor accepted invalid recipient")
+	}
+	for _, mailbox := range []string{"INBOX", "Outbox", "Sent"} {
+		if count, countErr := store.MailCount(mailbox); countErr != nil || count != 0 {
+			t.Fatalf("%s count = %d, err = %v", mailbox, count, countErr)
+		}
+	}
+}

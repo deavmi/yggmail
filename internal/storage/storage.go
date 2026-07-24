@@ -39,6 +39,7 @@ type Storage interface {
 
 	QueueListDestinations() ([]string, error)
 	QueueMailIDsForDestination(destination string) ([]types.QueuedMail, error)
+	QueueCreate(from string, recipients []types.QueueRecipient, localCopies int, content []byte) error
 	QueueInsertDestinationForID(destination string, id int, from, rcpt string) error
 	QueueDeleteDestinationForID(destination, mailbox string, id int) error
 	QueueSelectIsMessagePendingSend(mailbox string, id int) (bool, error)

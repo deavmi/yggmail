@@ -27,3 +27,8 @@ type QueuedMail struct {
 	From    string
 	Rcpt    string
 }
+
+type QueueRecipient struct {
+	Destination string
+	Address     string
+}
