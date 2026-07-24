@@ -3,6 +3,7 @@ package smtpsender
 import (
 	"bufio"
 	"crypto/ed25519"
+	"encoding/hex"
 	"io"
 	"log"
 	"net"
@@ -118,5 +119,34 @@ func TestRejectedDataRemainsQueued(t *testing.T) {
 	}
 	if count, err := store.MailCount("Outbox"); err != nil || count != 1 {
 		t.Fatalf("Outbox count = %d, err = %v", count, err)
+	}
+}
+
+func TestSelfAddressedMailGoesToInboxAndSent(t *testing.T) {
+	store, err := sqlite3.NewSQLite3StorageStorage(t.TempDir() + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() // nolint:errcheck
+	for _, mailbox := range []string{"INBOX", "Outbox", "Sent"} {
+		if err := store.MailboxCreate(mailbox); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publicKey := make(ed25519.PublicKey, ed25519.PublicKeySize)
+	address := hex.EncodeToString(publicKey) + "@yggmail"
+	queues := &Queues{
+		Config:  &config.Config{PublicKey: publicKey},
+		Log:     log.New(io.Discard, "", 0),
+		Storage: store,
+	}
+
+	if err := queues.QueueFor(address, []string{address}, []byte("self mail")); err != nil {
+		t.Fatal(err)
+	}
+	for mailbox, want := range map[string]int{"INBOX": 1, "Sent": 1, "Outbox": 0} {
+		if count, err := store.MailCount(mailbox); err != nil || count != want {
+			t.Fatalf("%s count = %d, err = %v, want %d", mailbox, count, err, want)
+		}
 	}
 }

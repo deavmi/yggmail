@@ -57,12 +57,14 @@ func (qs *Queues) manager() {
 }
 
 func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
-	pid, err := qs.Storage.MailCreate("Outbox", content)
-
-	if err != nil {
-		return fmt.Errorf("q.queues.Storage.MailCreate: %w", err)
+	type remoteRecipient struct {
+		destination string
+		address     string
 	}
-
+	var (
+		localRecipients  int
+		remoteRecipients []remoteRecipient
+	)
 	for _, rcpt := range rcpts {
 		addr, err := mail.ParseAddress(rcpt)
 		if err != nil {
@@ -74,14 +76,39 @@ func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
 		}
 		host := hex.EncodeToString(pk)
 		if host == hex.EncodeToString(qs.Config.PublicKey) {
+			localRecipients++
 			continue
 		}
+		remoteRecipients = append(remoteRecipients, remoteRecipient{
+			destination: host,
+			address:     rcpt,
+		})
+	}
 
-		if err := qs.Storage.QueueInsertDestinationForID(host, pid, from, rcpt); err != nil {
+	for range localRecipients {
+		if _, err := qs.Storage.MailCreate("INBOX", content); err != nil {
+			return fmt.Errorf("qs.Storage.MailCreate(INBOX): %w", err)
+		}
+	}
+	if len(remoteRecipients) == 0 {
+		if _, err := qs.Storage.MailCreate("Sent", content); err != nil {
+			return fmt.Errorf("qs.Storage.MailCreate(Sent): %w", err)
+		}
+		return nil
+	}
+
+	pid, err := qs.Storage.MailCreate("Outbox", content)
+	if err != nil {
+		return fmt.Errorf("qs.Storage.MailCreate(Outbox): %w", err)
+	}
+	for _, rcpt := range remoteRecipients {
+		if err := qs.Storage.QueueInsertDestinationForID(
+			rcpt.destination, pid, from, rcpt.address,
+		); err != nil {
 			return fmt.Errorf("qs.Storage.QueueInsertDestinationForID: %w", err)
 		}
 
-		_, _ = qs.queueFor(host)
+		_, _ = qs.queueFor(rcpt.destination)
 	}
 
 	return nil
