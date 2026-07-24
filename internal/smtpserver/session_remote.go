@@ -76,13 +76,13 @@ func (s *SessionRemote) Data(r io.Reader) error {
 		return fmt.Errorf("m.WriteTo: %w", err)
 	}
 
-	if id, err := s.backend.Storage.MailCreate("INBOX", b.Bytes()); err != nil {
+	if _, err := s.backend.Storage.MailCreate("INBOX", b.Bytes()); err != nil {
 		return fmt.Errorf("s.backend.Storage.StoreMessageFor: %w", err)
 	} else {
 		s.backend.Log.Printf("Stored new mail from %s", s.from)
 
 		if count, err := s.backend.Storage.MailCount("INBOX"); err == nil {
-			if err := s.backend.Notify.NotifyNew(id, count); err != nil {
+			if err := s.backend.Notify.NotifyNew(count); err != nil {
 				s.backend.Log.Println("Failed to notify:", s.from)
 			}
 		}
