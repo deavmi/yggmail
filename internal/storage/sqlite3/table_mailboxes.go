@@ -138,21 +138,21 @@ func (t *TableMailboxes) MailboxSelect(mailbox string) (bool, error) {
 
 func (t *TableMailboxes) MailboxCreate(name string) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.createMailbox.Exec(name)
+		_, err := txn.Stmt(t.createMailbox).Exec(name)
 		return err
 	})
 }
 
 func (t *TableMailboxes) MailboxRename(old, new string) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.renameMailbox.Exec(old, new)
+		_, err := txn.Stmt(t.renameMailbox).Exec(old, new)
 		return err
 	})
 }
 
 func (t *TableMailboxes) MailboxDelete(name string) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.deleteMailbox.Exec(name)
+		_, err := txn.Stmt(t.deleteMailbox).Exec(name)
 		return err
 	})
 }
@@ -163,7 +163,7 @@ func (t *TableMailboxes) MailboxSubscribe(name string, subscribed bool) error {
 		sn = 0
 	}
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.subscribeMailbox.Exec(sn, name)
+		_, err := txn.Stmt(t.subscribeMailbox).Exec(sn, name)
 		return err
 	})
 }

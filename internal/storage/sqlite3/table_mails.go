@@ -192,7 +192,9 @@ func NewTableMails(db *sql.DB, writer *Writer) (*TableMails, error) {
 func (t *TableMails) MailCreate(mailbox string, data []byte) (int, error) {
 	var id int
 	err := t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		return t.createMail.QueryRow(mailbox, data, time.Now().Unix()).Scan(&id)
+		return txn.Stmt(t.createMail).
+			QueryRow(mailbox, data, time.Now().Unix()).
+			Scan(&id)
 	})
 	return id, err
 }
@@ -280,21 +282,22 @@ func (t *TableMails) MailUnseen(mailbox string) (int, error) {
 
 func (t *TableMails) MailUpdateFlags(mailbox string, id int, seen, answered, flagged, deleted bool) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.updateMailFlags.Exec(seen, answered, flagged, deleted, mailbox, id)
+		_, err := txn.Stmt(t.updateMailFlags).
+			Exec(seen, answered, flagged, deleted, mailbox, id)
 		return err
 	})
 }
 
 func (t *TableMails) MailDelete(mailbox string, id int) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.deleteMail.Exec(mailbox, id)
+		_, err := txn.Stmt(t.deleteMail).Exec(mailbox, id)
 		return err
 	})
 }
 
 func (t *TableMails) MailExpunge(mailbox string) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.expungeMail.Exec(mailbox)
+		_, err := txn.Stmt(t.expungeMail).Exec(mailbox)
 		return err
 	})
 }

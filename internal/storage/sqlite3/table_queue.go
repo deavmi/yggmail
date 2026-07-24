@@ -138,14 +138,16 @@ func (t *TableQueue) QueueMailIDsForDestination(destination string) ([]types.Que
 
 func (t *TableQueue) QueueInsertDestinationForID(destination string, id int, from, rcpt string) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.queueInsertDestinationForID.Exec(destination, "Outbox", id, from, rcpt)
+		_, err := txn.Stmt(t.queueInsertDestinationForID).
+			Exec(destination, "Outbox", id, from, rcpt)
 		return err
 	})
 }
 
 func (t *TableQueue) QueueDeleteDestinationForID(destination, mailbox string, id int) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.queueDeleteIDForDestination.Exec(destination, mailbox, id)
+		_, err := txn.Stmt(t.queueDeleteIDForDestination).
+			Exec(destination, mailbox, id)
 		return err
 	})
 }

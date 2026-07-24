@@ -69,7 +69,7 @@ func (t *TableConfig) ConfigGet(key string) (string, error) {
 
 func (t *TableConfig) ConfigSet(key, value string) error {
 	return t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
-		_, err := t.set.Exec(key, value)
+		_, err := txn.Stmt(t.set).Exec(key, value)
 		return err
 	})
 }
