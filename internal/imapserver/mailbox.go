@@ -337,7 +337,10 @@ func (mbox *Mailbox) CreateMessage(flags []string, date time.Time, body imap.Lit
 	if err != nil {
 		return fmt.Errorf("b.ReadFrom: %w", err)
 	}
-	id, err := mbox.backend.Storage.MailCreate(mbox.name, b)
+	if date.IsZero() {
+		date = time.Now()
+	}
+	id, err := mbox.backend.Storage.MailCreateWithDate(mbox.name, b, date)
 	if err != nil {
 		return fmt.Errorf("mbox.backend.Storage.MailCreate: %w", err)
 	}

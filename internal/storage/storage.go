@@ -8,7 +8,11 @@
 
 package storage
 
-import "github.com/neilalexander/yggmail/internal/storage/types"
+import (
+	"time"
+
+	"github.com/neilalexander/yggmail/internal/storage/types"
+)
 
 type Storage interface {
 	ConfigGet(key string) (string, error)
@@ -28,6 +32,7 @@ type Storage interface {
 	MailboxSubscribe(name string, subscribed bool) error
 
 	MailCreate(mailbox string, data []byte) (int, error)
+	MailCreateWithDate(mailbox string, data []byte, date time.Time) (int, error)
 	MailCopy(mailbox string, id int, destination string) error
 	MailList(mailbox string, seen *bool) ([]*types.Mail, error)
 	MailListMetadata(mailbox string, seen *bool) ([]*types.Mail, error)

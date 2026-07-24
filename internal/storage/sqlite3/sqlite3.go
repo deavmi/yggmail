@@ -73,19 +73,19 @@ func (s *SQLite3Storage) QueueCreate(
 ) error {
 	return s.writer.Do(s.db, nil, func(txn *sql.Tx) error {
 		for range localCopies {
-			if _, err := createMailTx(txn, "INBOX", content); err != nil {
+			if _, err := createMailTx(txn, "INBOX", content, time.Now()); err != nil {
 				return fmt.Errorf("create local Inbox copy: %w", err)
 			}
 		}
 
 		if len(recipients) == 0 {
-			if _, err := createMailTx(txn, "Sent", content); err != nil {
+			if _, err := createMailTx(txn, "Sent", content, time.Now()); err != nil {
 				return fmt.Errorf("create Sent copy: %w", err)
 			}
 			return nil
 		}
 
-		outboxID, err := createMailTx(txn, "Outbox", content)
+		outboxID, err := createMailTx(txn, "Outbox", content, time.Now())
 		if err != nil {
 			return fmt.Errorf("create Outbox mail: %w", err)
 		}
@@ -101,7 +101,7 @@ func (s *SQLite3Storage) QueueCreate(
 	})
 }
 
-func createMailTx(txn *sql.Tx, mailbox string, content []byte) (int, error) {
+func createMailTx(txn *sql.Tx, mailbox string, content []byte, date time.Time) (int, error) {
 	id, err := allocateMailboxUIDTx(txn, mailbox)
 	if err != nil {
 		return 0, err
@@ -109,7 +109,7 @@ func createMailTx(txn *sql.Tx, mailbox string, content []byte) (int, error) {
 	if _, err := txn.Exec(`
 		INSERT INTO mails (mailbox, id, mail, datetime)
 		VALUES ($1, $2, $3, $4)
-	`, mailbox, id, content, time.Now().Unix()); err != nil {
+	`, mailbox, id, content, date.Unix()); err != nil {
 		return 0, err
 	}
 	return id, nil

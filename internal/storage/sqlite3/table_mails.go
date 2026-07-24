@@ -196,10 +196,14 @@ func NewTableMails(db *sql.DB, writer *Writer) (*TableMails, error) {
 }
 
 func (t *TableMails) MailCreate(mailbox string, data []byte) (int, error) {
+	return t.MailCreateWithDate(mailbox, data, time.Now())
+}
+
+func (t *TableMails) MailCreateWithDate(mailbox string, data []byte, date time.Time) (int, error) {
 	var id int
 	err := t.writer.Do(t.db, nil, func(txn *sql.Tx) error {
 		var err error
-		id, err = createMailTx(txn, mailbox, data)
+		id, err = createMailTx(txn, mailbox, data, date)
 		return err
 	})
 	return id, err

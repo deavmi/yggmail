@@ -246,6 +246,29 @@ func TestListMessagesFetchesBody(t *testing.T) {
 	}
 }
 
+func TestAppendPreservesInternalDate(t *testing.T) {
+	mailbox, _ := testMailbox(t)
+	want := time.Date(2019, time.March, 4, 5, 6, 7, 0, time.FixedZone("test", -7*60*60))
+	if err := mailbox.CreateMessage(
+		nil, want, bytes.NewBufferString("Subject: test\r\n\r\nbody"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(1)
+	messages := make(chan *imap.Message, 1)
+	if err := mailbox.ListMessages(
+		false, seqSet, []imap.FetchItem{imap.FetchInternalDate}, messages,
+	); err != nil {
+		t.Fatal(err)
+	}
+	message := <-messages
+	if !message.InternalDate.Equal(want) {
+		t.Fatalf("INTERNALDATE = %v, want %v", message.InternalDate, want)
+	}
+}
+
 func TestMoveFromOutboxCancelsDeliveryAndAllocatesDestinationID(t *testing.T) {
 	mailbox, store := testMailbox(t)
 	mailbox.name = "Outbox"
