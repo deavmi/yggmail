@@ -20,6 +20,7 @@ type TableMails struct {
 	db               *sql.DB
 	writer           *Writer
 	selectMails      *sql.Stmt
+	selectMailsSeen  *sql.Stmt
 	selectMail       *sql.Stmt
 	selectMailNextID *sql.Stmt
 	selectIDForSeq   *sql.Stmt
@@ -51,11 +52,21 @@ const mailsSchema = `
 		SELECT ROW_NUMBER() OVER (PARTITION BY mailbox) AS seq, * FROM mails
 	)
 	ORDER BY mailbox, id;
+
+	CREATE INDEX IF NOT EXISTS mails_mailbox_seen_id
+	ON mails(mailbox, seen, id);
 `
 
 const selectMailsStmt = `
-	SELECT * FROM inboxes
-	ORDER BY mailbox, id
+	SELECT id, mail, datetime, seen, answered, flagged, deleted FROM mails
+	WHERE mailbox = $1
+	ORDER BY id
+`
+
+const selectMailsSeenStmt = `
+	SELECT id, mail, datetime, seen, answered, flagged, deleted FROM mails
+	WHERE mailbox = $1 AND seen = $2
+	ORDER BY id
 `
 
 const selectMailStmt = `
@@ -127,6 +138,10 @@ func NewTableMails(db *sql.DB, writer *Writer) (*TableMails, error) {
 	if err != nil {
 		return nil, fmt.Errorf("db.Prepare(selectMailsStmt): %w", err)
 	}
+	t.selectMailsSeen, err = db.Prepare(selectMailsSeenStmt)
+	if err != nil {
+		return nil, fmt.Errorf("db.Prepare(selectMailsSeenStmt): %w", err)
+	}
 	t.selectMail, err = db.Prepare(selectMailStmt)
 	if err != nil {
 		return nil, fmt.Errorf("db.Prepare(selectMailStmt): %w", err)
@@ -180,6 +195,40 @@ func (t *TableMails) MailCreate(mailbox string, data []byte) (int, error) {
 		return t.createMail.QueryRow(mailbox, data, time.Now().Unix()).Scan(&id)
 	})
 	return id, err
+}
+
+func (t *TableMails) MailList(mailbox string, seen *bool) ([]*types.Mail, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if seen == nil {
+		rows, err = t.selectMails.Query(mailbox)
+	} else {
+		rows, err = t.selectMailsSeen.Query(mailbox, *seen)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("t.selectMails.Query: %w", err)
+	}
+	defer rows.Close() // nolint:errcheck
+
+	var mails []*types.Mail
+	for rows.Next() {
+		var datetime int64
+		mail := &types.Mail{Mailbox: mailbox}
+		if err := rows.Scan(
+			&mail.ID, &mail.Mail, &datetime, &mail.Seen,
+			&mail.Answered, &mail.Flagged, &mail.Deleted,
+		); err != nil {
+			return nil, fmt.Errorf("rows.Scan: %w", err)
+		}
+		mail.Date = time.Unix(datetime, 0)
+		mails = append(mails, mail)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows.Err: %w", err)
+	}
+	return mails, nil
 }
 
 func (t *TableMails) MailSelect(mailbox string, id int) (int, *types.Mail, error) {

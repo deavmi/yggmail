@@ -27,6 +27,7 @@ type Storage interface {
 	MailboxSubscribe(name string, subscribed bool) error
 
 	MailCreate(mailbox string, data []byte) (int, error)
+	MailList(mailbox string, seen *bool) ([]*types.Mail, error)
 	MailSelect(mailbox string, id int) (int, *types.Mail, error)
 	MailSearch(mailbox string) ([]uint32, error)
 	MailUpdateFlags(mailbox string, id int, seen, answered, flagged, deleted bool) error

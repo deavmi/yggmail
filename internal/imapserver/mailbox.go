@@ -117,20 +117,30 @@ func (mbox *Mailbox) Check() error {
 func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.FetchItem, ch chan<- *imap.Message) error {
 	defer close(ch)
 
-	ids, err := mbox.getIDsFromSeqSet(uid, seqSet)
+	mails, err := mbox.backend.Storage.MailList(mbox.name, nil)
 	if err != nil {
-		return fmt.Errorf("mbox.getIDsFromSeqSet: %w", err)
+		return fmt.Errorf("mbox.backend.Storage.MailList: %w", err)
 	}
 
-	for _, id := range ids {
-		mseq, mail, err := mbox.backend.Storage.MailSelect(mbox.name, int(id))
-		if err != nil {
+	maxSeq := uint32(len(mails))
+	var maxUID uint32
+	if len(mails) > 0 {
+		maxUID = uint32(mails[len(mails)-1].ID)
+	}
+	for i, mail := range mails {
+		mseq := uint32(i + 1)
+		id := uint32(mail.ID)
+		number, maximum := mseq, maxSeq
+		if uid {
+			number, maximum = id, maxUID
+		}
+		if !seqSetContains(seqSet, number, maximum) {
 			continue
 		}
 
-		fetched := imap.NewMessage(uint32(id), items)
-		fetched.SeqNum = uint32(mseq)
-		fetched.Uid = uint32(mail.ID)
+		fetched := imap.NewMessage(mseq, items)
+		fetched.SeqNum = mseq
+		fetched.Uid = id
 
 		get := func() (io.Reader, textproto.Header, error) {
 			bodyreader := bufio.NewReader(bytes.NewReader(mail.Mail))
@@ -183,7 +193,7 @@ func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 				fetched.Size = uint32(len(mail.Mail))
 
 			case imap.FetchUid:
-				fetched.Uid = uint32(id)
+				fetched.Uid = id
 
 			default:
 				section, err := imap.ParseBodySectionName(item)
@@ -209,7 +219,98 @@ func (mbox *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 }
 
 func (mbox *Mailbox) SearchMessages(uid bool, criteria *imap.SearchCriteria) ([]uint32, error) {
-	return mbox.backend.Storage.MailSearch(mbox.name)
+	seen, possible := seenFilter(criteria)
+	if !possible {
+		return []uint32{}, nil
+	}
+	// Filtering in SQL uses the seen index for the common UID SEARCH UNSEEN
+	// sync path. Sequence-number searches need the complete mailbox so that
+	// their positions remain correct.
+	if !uid || criteria.SeqNum != nil {
+		seen = nil
+	}
+	mails, err := mbox.backend.Storage.MailList(mbox.name, seen)
+	if err != nil {
+		return nil, fmt.Errorf("mbox.backend.Storage.MailList: %w", err)
+	}
+
+	maxSeq := uint32(len(mails))
+	nextUID, err := mbox.backend.Storage.MailNextID(mbox.name)
+	if err != nil {
+		return nil, fmt.Errorf("mbox.backend.Storage.MailNextID: %w", err)
+	}
+	maxUID := uint32(nextUID - 1)
+	var ids []uint32
+	for i, mail := range mails {
+		seqNum := uint32(i + 1)
+		mailUID := uint32(mail.ID)
+		if criteria.SeqNum != nil && !seqSetContains(criteria.SeqNum, seqNum, maxSeq) {
+			continue
+		}
+		if criteria.Uid != nil && !seqSetContains(criteria.Uid, mailUID, maxUID) {
+			continue
+		}
+		if !matchesSeenCriteria(mail.Seen, criteria) {
+			continue
+		}
+		if uid {
+			ids = append(ids, mailUID)
+		} else {
+			ids = append(ids, seqNum)
+		}
+	}
+	return ids, nil
+}
+
+func seqSetContains(seqSet *imap.SeqSet, number, maximum uint32) bool {
+	if seqSet.Contains(number) {
+		return true
+	}
+	if number != maximum {
+		return false
+	}
+	for _, seq := range seqSet.Set {
+		if seq.Contains(0) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesSeenCriteria(seen bool, criteria *imap.SearchCriteria) bool {
+	for _, flag := range criteria.WithFlags {
+		if flag == imap.SeenFlag && !seen {
+			return false
+		}
+	}
+	for _, flag := range criteria.WithoutFlags {
+		if flag == imap.SeenFlag && seen {
+			return false
+		}
+	}
+	return true
+}
+
+func seenFilter(criteria *imap.SearchCriteria) (*bool, bool) {
+	var (
+		filter    bool
+		hasSeen   bool
+		hasUnseen bool
+	)
+	for _, flag := range criteria.WithFlags {
+		hasSeen = hasSeen || flag == imap.SeenFlag
+	}
+	for _, flag := range criteria.WithoutFlags {
+		hasUnseen = hasUnseen || flag == imap.SeenFlag
+	}
+	if hasSeen && hasUnseen {
+		return nil, false
+	}
+	if !hasSeen && !hasUnseen {
+		return nil, true
+	}
+	filter = hasSeen
+	return &filter, true
 }
 
 func (mbox *Mailbox) CreateMessage(flags []string, date time.Time, body imap.Literal) error {
