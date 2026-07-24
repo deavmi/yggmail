@@ -60,11 +60,28 @@ func (mbox *Mailbox) Name() string {
 
 func (mbox *Mailbox) Info() (*imap.MailboxInfo, error) {
 	info := &imap.MailboxInfo{
-		Attributes: []string{},
+		Attributes: specialUseAttributes(mbox.name),
 		Delimiter:  "/",
 		Name:       mbox.name,
 	}
 	return info, nil
+}
+
+func specialUseAttributes(name string) []string {
+	switch name {
+	case "Archive":
+		return []string{imap.ArchiveAttr}
+	case "Drafts":
+		return []string{imap.DraftsAttr}
+	case "Junk":
+		return []string{imap.JunkAttr}
+	case "Sent":
+		return []string{imap.SentAttr}
+	case "Trash":
+		return []string{imap.TrashAttr}
+	default:
+		return []string{}
+	}
 }
 
 func (mbox *Mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error) {

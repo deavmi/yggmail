@@ -87,6 +87,35 @@ func TestMailboxPublishesCrossConnectionUpdates(t *testing.T) {
 	}
 }
 
+func TestMailboxSpecialUseAttributes(t *testing.T) {
+	tests := map[string]string{
+		"Archive": imap.ArchiveAttr,
+		"Drafts":  imap.DraftsAttr,
+		"Junk":    imap.JunkAttr,
+		"Sent":    imap.SentAttr,
+		"Trash":   imap.TrashAttr,
+	}
+	for name, want := range tests {
+		mailbox := &Mailbox{name: name}
+		info, err := mailbox.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(info.Attributes, []string{want}) {
+			t.Errorf("%s attributes = %v, want [%s]", name, info.Attributes, want)
+		}
+	}
+
+	inbox := &Mailbox{name: "INBOX"}
+	info, err := inbox.Info()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(info.Attributes) != 0 {
+		t.Fatalf("INBOX attributes = %v, want none", info.Attributes)
+	}
+}
+
 func TestListMessagesUsesMailboxSequenceOrder(t *testing.T) {
 	mailbox, store := testMailbox(t)
 	for range 3 {

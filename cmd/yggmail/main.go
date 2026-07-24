@@ -107,7 +107,9 @@ func main() {
 	mailAddr := fmt.Sprintf("%s@%s", mailAddrUser, utils.Domain)
 	log.Printf("Mail address: %s\n", mailAddr)
 
-	for _, name := range []string{"INBOX", "Outbox", "Sent"} {
+	for _, name := range []string{
+		"INBOX", "Outbox", "Sent", "Trash", "Drafts", "Junk", "Archive",
+	} {
 		if err := storage.MailboxCreate(name); err != nil {
 			panic(err)
 		}
