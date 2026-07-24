@@ -314,6 +314,9 @@ func seenFilter(criteria *imap.SearchCriteria) (*bool, bool) {
 }
 
 func (mbox *Mailbox) CreateMessage(flags []string, date time.Time, body imap.Literal) error {
+	if mbox.name == "Outbox" {
+		return fmt.Errorf("can't append into Outbox as it is a protected folder")
+	}
 	b, err := io.ReadAll(body)
 	if err != nil {
 		return fmt.Errorf("b.ReadFrom: %w", err)

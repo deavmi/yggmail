@@ -1,9 +1,11 @@
 package imapserver
 
 import (
+	"bytes"
 	"io"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-imap"
 	"github.com/neilalexander/yggmail/internal/storage/sqlite3"
@@ -259,5 +261,21 @@ func TestUpdateFlagsSupportsSetAddRemoveAndExpunge(t *testing.T) {
 	}
 	if count, err := store.MailCount("INBOX"); err != nil || count != 0 {
 		t.Fatalf("mail count = %d, err = %v", count, err)
+	}
+}
+
+func TestAppendRejectsOutbox(t *testing.T) {
+	mailbox, store := testMailbox(t)
+	mailbox.name = "Outbox"
+	if err := store.MailboxCreate("Outbox"); err != nil {
+		t.Fatal(err)
+	}
+
+	err := mailbox.CreateMessage(nil, time.Time{}, bytes.NewBufferString("mail"))
+	if err == nil {
+		t.Fatal("CreateMessage accepted APPEND into Outbox")
+	}
+	if count, err := store.MailCount("Outbox"); err != nil || count != 0 {
+		t.Fatalf("Outbox count = %d, err = %v", count, err)
 	}
 }
