@@ -174,10 +174,13 @@ func (q *Queue) run() {
 			if err != nil {
 				return fmt.Errorf("client.Data: %w", err)
 			}
-			defer writer.Close() // nolint:errcheck
 
 			if _, err := writer.Write(mail.Mail); err != nil {
+				_ = writer.Close()
 				return fmt.Errorf("writer.Write: %w", err)
+			}
+			if err := writer.Close(); err != nil {
+				return fmt.Errorf("writer.Close: %w", err)
 			}
 
 			if err := q.queues.Storage.QueueMarkDelivered(q.destination, ref.ID); err != nil {
