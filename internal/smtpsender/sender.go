@@ -67,7 +67,7 @@ func (qs *Queues) fixUp(incoming string) (string, error) {
 	var newAddr = ""
 	var els = strings.Split(newAddr, "@")
 	if len(els) != 2 {
-		return "", fmt.Errorf("Email address '%s' is invalid as it has too many @ symbols", incoming)
+		return "", fmt.Errorf("email address '%s' is invalid as it has too many @ symbols", incoming)
 	}
 
 	var id = els[0]
@@ -93,7 +93,7 @@ func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
 		// Check if `rcpt` needs any fix up
 		// and then apply them. <id>@yggmail* -> <id>@yggmail.com
 		if rcpt, e := qs.fixUp(rcpt); e != nil {
-			qs.Log.Printf("Error shimming '%s': %s", rcpt, e)
+			qs.Log.Printf("error shimming '%s': %s", rcpt, e)
 			return e
 		}
 	
