@@ -62,7 +62,7 @@ func (qs *Queues) manager() {
 const EXPECTED_DOMAIN = "yggmail.com"
 
 func (qs *Queues) fixUp(incoming string) (string, error) {
-	qs.Log.Printf("incoming: %s", incoming);
+	qs.Log.Printf("incoming: %s", incoming)
 
 	var newAddr = ""
 	var els = strings.Split(newAddr, "@")
@@ -74,7 +74,7 @@ func (qs *Queues) fixUp(incoming string) (string, error) {
 	var domain = els[1]
 
 	if(domain != EXPECTED_DOMAIN) {
-		var newDomain = EXPECTED_DOMAIN;
+		var newDomain = EXPECTED_DOMAIN
 		qs.Log.Printf("Had to apply fixup to domain: %s -> %s", domain, newDomain)
 		domain = newDomain
 	}
