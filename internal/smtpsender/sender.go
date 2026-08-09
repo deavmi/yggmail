@@ -17,6 +17,7 @@ import (
 	"net/mail"
 	"sync"
 	"time"
+	"strings"
 
 	"github.com/emersion/go-smtp"
 	"github.com/neilalexander/yggmail/internal/config"
@@ -57,12 +58,27 @@ func (qs *Queues) manager() {
 	time.AfterFunc(time.Minute, qs.manager)
 }
 
+func (qs *Queues) fixUp(incoming string) (string, error) {
+	qs.Log.Printf("incoming: %s", incoming);
+
+	var newAddr = ""
+	var els = strings.Split(newAddr, "@")
+	if len(els) != 2 {
+		return "", fmt.Errorf("Email address '%s' is invalid as it has too many @ symbols", incoming)
+	}
+	
+	return newAddr, nil
+}
+
 func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
 	var (
 		localRecipients  int
 		remoteRecipients []types.QueueRecipient
 	)
 	for _, rcpt := range rcpts {
+		// Check if `rcpt` needs any fix up
+		// and then apply them. <id>@yggmail* -> <id>@yggmail.com
+	
 		addr, err := mail.ParseAddress(rcpt)
 		if err != nil {
 			return fmt.Errorf("mail.ParseAddress: %w", err)
