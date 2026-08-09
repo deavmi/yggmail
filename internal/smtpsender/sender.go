@@ -92,6 +92,10 @@ func (qs *Queues) QueueFor(from string, rcpts []string, content []byte) error {
 	for _, rcpt := range rcpts {
 		// Check if `rcpt` needs any fix up
 		// and then apply them. <id>@yggmail* -> <id>@yggmail.com
+		if rcpt, e := qs.fixUp(rcpt); e != nil {
+			qs.Log.Printf("Error shimming '%s': %s", rcpt, e)
+			return e
+		}
 	
 		addr, err := mail.ParseAddress(rcpt)
 		if err != nil {
