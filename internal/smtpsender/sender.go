@@ -58,6 +58,9 @@ func (qs *Queues) manager() {
 	time.AfterFunc(time.Minute, qs.manager)
 }
 
+// TODO: Make this configurable, idk
+const EXPECTED_DOMAIN = "yggmail.com"
+
 func (qs *Queues) fixUp(incoming string) (string, error) {
 	qs.Log.Printf("incoming: %s", incoming);
 
@@ -66,7 +69,18 @@ func (qs *Queues) fixUp(incoming string) (string, error) {
 	if len(els) != 2 {
 		return "", fmt.Errorf("Email address '%s' is invalid as it has too many @ symbols", incoming)
 	}
-	
+
+	var id = els[0]
+	var domain = els[1]
+
+	if(domain != EXPECTED_DOMAIN) {
+		var newDomain = EXPECTED_DOMAIN;
+		qs.Log.Printf("Had to apply fixup to domain: %s -> %s", domain, newDomain)
+		domain = newDomain
+	}
+
+	newAddr = fmt.Sprintf("%s@%s", id, domain)
+	qs.Log.Printf("Final calculated address: '%s'", newAddr)
 	return newAddr, nil
 }
 
