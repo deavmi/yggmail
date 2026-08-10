@@ -78,6 +78,8 @@ func welcomeMessageFor(yourYggMailAddr string, log *log.Logger) ([]byte, error) 
 
 var welcomeSubject = "Welcome to Yggmail!"
 var welcomeBody = `
+<html>
+<body>
 <h1>Welcome to <i>YggMail!</i></h1>
 <br>
 
@@ -96,6 +98,8 @@ good old email as you know it.</p>
 
 <p>Thinking of contributing; we'd be more than happy
 to work together. Our project is hosted on <a href="%s">GitHub</a>.</p>
+</body>
+</html>
 `
 
 func welcomeTo(yourYggMailAddr string, log *log.Logger) message.Header {
