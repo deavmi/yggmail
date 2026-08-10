@@ -11,7 +11,7 @@ func Test_WelcomeGenerate(t *testing.T) {
 
 	// generate welcome message header
 	// FIXME: How do we get a nu
-	bytesOut, e := welcomeMessageFor(newUser, Default())
+	bytesOut, e := welcomeMessageFor(newUser, logger.Default())
 
 	if e != nil {
 		t.Fail()
