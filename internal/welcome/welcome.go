@@ -78,20 +78,24 @@ func welcomeMessageFor(yourYggMailAddr string, log *log.Logger) ([]byte, error) 
 
 var welcomeSubject = "Welcome to Yggmail!"
 var welcomeBody = `
-Hey <b>%s</b>!
+<h1>Welcome to <i>YggMail!</i></h1>
+<br>
 
-We'd like to welcome you to Yggmail!
+<p>Hey <b>%s</b>!</p>
 
-You're about to embark in both a revolution and an
+<p>We'd like to welcome you to Yggmail!</p>
+
+<p>You're about to embark in both a revolution and an
 evolution as you know it. The revolution is that this
 mailing system uses the new and experimental Yggdrasil
 internet routing system, the evolution is that it's
-good old email as you know it.
+good old email as you know it.</p>
 
-Want to learn more? See the <a href="%s">website</a>
+<br>
+<p>Want to learn more? See the <a href="%s">website</a></p>
 
-Thinking of contributing; we'd be more than happy
-to work together. Our project is hosted on <a href="%s">GitHub</a>.
+<p>Thinking of contributing; we'd be more than happy
+to work together. Our project is hosted on <a href="%s">GitHub</a>.</p>
 `
 
 func welcomeTo(yourYggMailAddr string, log *log.Logger) message.Header {
